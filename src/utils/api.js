@@ -5,14 +5,41 @@ let cachedApiUrl = null;
 
 export const getApiUrl = () => {
   // If REACT_APP_API_URL is set, use it (for production)
-  // This is set at build time, so check it first
+  // BUT: If it's localhost and we're on a production domain, ignore it!
   if (process.env.REACT_APP_API_URL) {
-    const url = process.env.REACT_APP_API_URL;
-    if (!cachedApiUrl || cachedApiUrl !== url) {
-      cachedApiUrl = url;
-      console.log('[API] Using REACT_APP_API_URL:', cachedApiUrl);
+    const envUrl = process.env.REACT_APP_API_URL;
+    
+    // Check if we're running on a production domain but REACT_APP_API_URL is localhost
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const isLocalhostEnv = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+      const isProductionDomain = hostname !== 'localhost' && 
+                                 hostname !== '127.0.0.1' && 
+                                 !hostname.includes('192.168') &&
+                                 !hostname.startsWith('10.') &&
+                                 !hostname.startsWith('172.');
+      
+      // If env URL is localhost but we're on production domain, ignore it and use relative URL
+      if (isLocalhostEnv && isProductionDomain) {
+        console.warn('[API] ⚠️ REACT_APP_API_URL is localhost but running on production domain. Ignoring it.');
+        console.warn('[API] Hostname:', hostname, 'Env URL:', envUrl);
+        // Fall through to relative URL logic below
+      } else {
+        // Use the env URL if it's not a localhost/production mismatch
+        if (!cachedApiUrl || cachedApiUrl !== envUrl) {
+          cachedApiUrl = envUrl;
+          console.log('[API] Using REACT_APP_API_URL:', cachedApiUrl);
+        }
+        return cachedApiUrl;
+      }
+    } else {
+      // Build time - use env URL
+      if (!cachedApiUrl || cachedApiUrl !== envUrl) {
+        cachedApiUrl = envUrl;
+        console.log('[API] Using REACT_APP_API_URL:', cachedApiUrl);
+      }
+      return cachedApiUrl;
     }
-    return cachedApiUrl;
   }
 
   // If running on production domain (not localhost), use relative URL
