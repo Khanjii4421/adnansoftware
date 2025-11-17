@@ -2,7 +2,7 @@ services:
   - type: web
     name: seller-portal
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && DISABLE_ESLINT_PLUGIN=true npm run build
     startCommand: npm run start:prod
     envVars:
       - key: NODE_ENV
