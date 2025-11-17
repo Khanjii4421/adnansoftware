@@ -32,7 +32,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 relative overflow-hidden py-4 px-4">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-white opacity-10 rounded-full blur-3xl animate-pulse"></div>
@@ -40,35 +40,35 @@ const Login = () => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-white opacity-5 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="max-w-md w-full space-y-8 p-10 bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 relative z-10">
+      <div className="max-w-md w-full space-y-6 md:space-y-8 p-6 md:p-10 bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 relative z-10 mx-4 my-4">
         {/* Brand Logo/Header */}
         <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3 hover:rotate-6 transition-transform">
-              <span className="text-4xl font-bold text-white">AK</span>
+          <div className="flex justify-center mb-3 md:mb-4">
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3 hover:rotate-6 transition-transform">
+              <span className="text-3xl md:text-4xl font-bold text-white">AK</span>
             </div>
           </div>
-          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent mb-1 md:mb-2">
             Adnan Khaddar
           </h1>
-          <p className="text-xl font-semibold text-gray-700 mb-1">Management Portal</p>
-          <div className="flex items-center justify-center gap-2 mt-3">
+          <p className="text-lg md:text-xl font-semibold text-gray-700 mb-1">Management Portal</p>
+          <div className="flex items-center justify-center gap-2 mt-2 md:mt-3">
             <div className="h-1 w-12 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"></div>
             <div className="h-1 w-8 bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full"></div>
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full"></div>
           </div>
-          <p className="mt-4 text-sm font-medium text-gray-500">
+          <p className="mt-3 md:mt-4 text-xs md:text-sm font-medium text-gray-500">
             Welcome back! Please sign in to continue
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="mt-6 md:mt-8 space-y-5 md:space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 text-red-800 px-5 py-4 rounded-xl relative shadow-lg">
-              <div className="flex items-start gap-3">
-                <span className="text-2xl">⚠️</span>
+            <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 text-red-800 px-4 md:px-5 py-3 md:py-4 rounded-xl relative shadow-lg">
+              <div className="flex items-start gap-2 md:gap-3">
+                <span className="text-xl md:text-2xl">⚠️</span>
                 <div className="flex-1">
-                  <strong className="font-bold text-lg block mb-1">Login Failed</strong>
-                  <p className="text-sm">{error}</p>
+                  <strong className="font-bold text-base md:text-lg block mb-1">Login Failed</strong>
+                  <p className="text-xs md:text-sm">{error}</p>
                   {(error.includes('Database') || error.includes('Supabase') || error.includes('schema')) ? (
                     <div className="mt-3 p-3 bg-white/50 rounded-lg border border-red-200">
                       <p className="text-xs font-semibold mb-1">💡 Solution:</p>
@@ -104,14 +104,14 @@ const Login = () => {
               </div>
             </div>
           )}
-          <div className="space-y-5">
+          <div className="space-y-4 md:space-y-5">
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-xs md:text-sm font-semibold text-gray-700 mb-1 md:mb-2">
                 Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-400 text-lg">📧</span>
+                  <span className="text-gray-400 text-base md:text-lg">📧</span>
                 </div>
                 <input
                   id="email"
@@ -119,7 +119,7 @@ const Login = () => {
                   type="email"
                   autoComplete="email"
                   required
-                  className="appearance-none relative block w-full pl-10 pr-3 py-3 border-2 border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-gray-50 focus:bg-white"
+                  className="appearance-none relative block w-full pl-9 md:pl-10 pr-3 py-2.5 md:py-3 text-sm md:text-base border-2 border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-gray-50 focus:bg-white"
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -127,12 +127,12 @@ const Login = () => {
               </div>
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-xs md:text-sm font-semibold text-gray-700 mb-1 md:mb-2">
                 Password
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-400 text-lg">🔒</span>
+                  <span className="text-gray-400 text-base md:text-lg">🔒</span>
                 </div>
                 <input
                   id="password"
@@ -140,7 +140,7 @@ const Login = () => {
                   type="password"
                   autoComplete="current-password"
                   required
-                  className="appearance-none relative block w-full pl-10 pr-3 py-3 border-2 border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-gray-50 focus:bg-white"
+                  className="appearance-none relative block w-full pl-9 md:pl-10 pr-3 py-2.5 md:py-3 text-sm md:text-base border-2 border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-gray-50 focus:bg-white"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -153,7 +153,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center items-center gap-2 py-4 px-6 border border-transparent text-base font-bold rounded-xl text-white bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-600 hover:via-teal-700 hover:to-cyan-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="group relative w-full flex justify-center items-center gap-2 py-3 md:py-4 px-6 border border-transparent text-sm md:text-base font-bold rounded-xl text-white bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-600 hover:via-teal-700 hover:to-cyan-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {loading ? (
                 <>
@@ -173,8 +173,8 @@ const Login = () => {
           </div>
           
           {/* Footer */}
-          <div className="text-center pt-4">
-            <p className="text-xs text-gray-500">
+          <div className="text-center pt-3 md:pt-4">
+            <p className="text-[10px] md:text-xs text-gray-500">
               © 2025 Dev By Khalil Khan. All rights reserved.
             </p>
           </div>
