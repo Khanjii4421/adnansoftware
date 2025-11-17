@@ -105,7 +105,8 @@ const AdminDashboard = () => {
       const daily_trends = incomingStats.daily_trends || statsRes.data.daily_trends || [];
 
       // Process KPIs from parallel request
-      const payload = kpiRes.data || {};
+      try {
+        const payload = kpiRes.data || {};
         // Ensure product codes are shown case-insensitively (backend already uppercases)
         const productKpis = Array.isArray(payload.product_kpis) ? payload.product_kpis : product_kpis;
         const deliveredData = Array.isArray(payload.delivered_data) ? payload.delivered_data : [];

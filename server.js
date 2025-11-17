@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const path = require('path');
+const fs = require('fs');
 const supabase = require('./config/supabase');
 
 const app = express();
@@ -5610,9 +5611,14 @@ function generatePurchaseBillHTML(purchase, supplier, items, billDate, paymentHi
 }
 
 // Serve static files from React app in production
-if (process.env.NODE_ENV === 'production') {
+// Check if build directory exists and NODE_ENV is production
+const buildPath = path.join(__dirname, 'build');
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+const buildExists = fs.existsSync(buildPath);
+
+if (isProduction && buildExists) {
   // Serve static files from the React app
-  app.use(express.static(path.join(__dirname, 'build')));
+  app.use(express.static(buildPath));
   
   // Handle React routing, return all requests to React app
   app.get('*', (req, res) => {
@@ -5620,19 +5626,26 @@ if (process.env.NODE_ENV === 'production') {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });
     }
-    res.sendFile(path.join(__dirname, 'build', 'index.html'));
+    res.sendFile(path.join(buildPath, 'index.html'));
   });
+  console.log(`✅ Serving static files from: ${buildPath}`);
+} else if (isProduction && !buildExists) {
+  console.warn(`⚠️  WARNING: Build directory not found at ${buildPath}`);
+  console.warn(`   The React app may not be built. Run 'npm run build' first.`);
 }
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+// For Railway/cloud deployments, bind to 0.0.0.0 to accept external connections
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`📊 Database: ${isSupabaseConfigured ? '✅ Connected' : '⚠️  Not configured'}`);
   console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET_KEY ? '✅ Set' : '⚠️  Using default'}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Listening on: ${HOST}:${PORT}`);
   if (!isSupabaseConfigured) {
     console.log(`\n⚠️  WARNING: Supabase is not configured!`);
-    console.log(`   Please create a .env file with SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
+    console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
     console.log(`   See env.example for reference\n`);
   }
 });
