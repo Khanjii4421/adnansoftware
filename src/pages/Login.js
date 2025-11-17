@@ -69,13 +69,34 @@ const Login = () => {
                 <div className="flex-1">
                   <strong className="font-bold text-lg block mb-1">Login Failed</strong>
                   <p className="text-sm">{error}</p>
-                  {error.includes('Database') || error.includes('Supabase') || error.includes('schema') ? (
+                  {(error.includes('Database') || error.includes('Supabase') || error.includes('schema')) ? (
                     <div className="mt-3 p-3 bg-white/50 rounded-lg border border-red-200">
                       <p className="text-xs font-semibold mb-1">💡 Solution:</p>
                       <ul className="text-xs space-y-1 list-disc list-inside">
                         <li>Created a .env file with Supabase credentials</li>
                         <li>Run the database schema (supabase-schema.sql) in Supabase</li>
                         <li>Restarted the server after creating .env file</li>
+                      </ul>
+                    </div>
+                  ) : error.includes('localhost') || error.includes('127.0.0.1') ? (
+                    <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-xs font-semibold mb-1">⚠️ Mobile Device Issue:</p>
+                      <ul className="text-xs space-y-1 list-disc list-inside">
+                        <li>App is trying to connect to localhost</li>
+                        <li>Make sure you're accessing the Railway URL: <strong>https://your-app.railway.app</strong></li>
+                        <li>Check browser console for API URL details (F12)</li>
+                        <li>Clear browser cache and reload the page</li>
+                      </ul>
+                    </div>
+                  ) : error.includes('Network') || error.includes('connection') ? (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-xs font-semibold mb-1">💡 Troubleshooting:</p>
+                      <ul className="text-xs space-y-1 list-disc list-inside">
+                        <li>Check your internet connection</li>
+                        <li>Verify Railway deployment is live</li>
+                        <li>Check browser console (F12) for detailed error logs</li>
+                        <li>Try refreshing the page</li>
+                        <li>If on mobile, try using WiFi instead of mobile data</li>
                       </ul>
                     </div>
                   ) : null}

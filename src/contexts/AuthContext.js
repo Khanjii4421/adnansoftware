@@ -68,13 +68,21 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const apiUrl = getCurrentApiUrl(); // Get API URL dynamically for each request
-      console.log('[Login] Attempting login with API URL:', apiUrl);
+      
+      // Detailed logging for mobile debugging
+      console.log('=== LOGIN DEBUG INFO ===');
+      console.log('[Login] Current URL:', window.location.href);
+      console.log('[Login] Hostname:', window.location.hostname);
+      console.log('[Login] Origin:', window.location.origin);
+      console.log('[Login] API URL:', apiUrl);
+      console.log('[Login] Full endpoint:', `${apiUrl}/auth/login`);
+      console.log('========================');
       
       const response = await axios.post(`${apiUrl}/auth/login`, {
         email,
         password,
       }, {
-        timeout: 15000, // 15 seconds timeout for mobile
+        timeout: 20000, // 20 seconds timeout for mobile
       });
       const { access_token, user } = response.data;
       setToken(access_token);
@@ -84,21 +92,40 @@ export const AuthProvider = ({ children }) => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
       return { success: true, user };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('=== LOGIN ERROR DETAILS ===');
+      console.error('Error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error response:', error.response);
+      console.error('API URL used:', getCurrentApiUrl());
+      console.error('Current location:', window.location.href);
+      console.error('============================');
+      
       let errorMessage = 'Login failed';
       
       // Handle network errors (no response from server)
       if (!error.response) {
+        const apiUrl = getCurrentApiUrl();
+        const isLocalhost = apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1');
+        
         if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
-          errorMessage = 'Server connection refused. Please check if the server is running.';
+          if (isLocalhost) {
+            errorMessage = 'Local server not running. Please start the server on your laptop.';
+          } else {
+            errorMessage = 'Server connection refused. Please check if the server is running on Railway.';
+          }
         } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-          errorMessage = 'Network error. Please check your internet connection and ensure the server is running.';
+          if (isLocalhost) {
+            errorMessage = 'Cannot connect to localhost. Make sure your laptop server is running on port 3000.';
+          } else {
+            errorMessage = `Cannot connect to server at ${apiUrl}. Please check:\n1. Railway deployment is live\n2. Your internet connection\n3. Try again in a few moments`;
+          }
         } else if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
-          errorMessage = 'Request timeout. The server is taking too long to respond.';
+          errorMessage = 'Request timeout. Server is taking too long to respond. Please check your internet connection.';
         } else if (error.message) {
-          errorMessage = `Network error: ${error.message}`;
+          errorMessage = `Network error: ${error.message}. API URL: ${apiUrl}`;
         } else {
-          errorMessage = 'Unable to connect to server. Please check your connection and try again.';
+          errorMessage = `Unable to connect to server at ${apiUrl}. Please check your connection and try again.`;
         }
       } 
       // Handle server response errors (4xx, 5xx)

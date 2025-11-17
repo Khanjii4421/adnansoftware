@@ -52,17 +52,26 @@ export const getApiUrl = () => {
       const apiUrl = `${origin}/api`;
       if (!cachedApiUrl || cachedApiUrl !== apiUrl) {
         cachedApiUrl = apiUrl;
-        console.log('[API] Production mode detected. Using relative URL:', cachedApiUrl);
+        console.log('=== API URL DETECTION ===');
+        console.log('[API] ✅ Production mode detected!');
+        console.log('[API] Using relative URL:', cachedApiUrl);
         console.log('[API] Full URL info:', {
           hostname,
           protocol,
           port,
           host,
           origin,
-          apiUrl
+          apiUrl,
+          fullURL: window.location.href
         });
+        console.log('==========================');
       }
       return cachedApiUrl;
+    } else {
+      // Localhost detected - warn if on mobile
+      console.warn('⚠️ [API] Localhost detected! This will NOT work on mobile.');
+      console.warn('Current location:', window.location.href);
+      console.warn('Expected: Railway domain (e.g., https://your-app.railway.app)');
     }
   }
 
