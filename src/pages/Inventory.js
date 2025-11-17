@@ -2,14 +2,26 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+// Auto-detect API URL
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.host}/api`;
+  }
+  return 'http://localhost:3000/api';
+};
+const API_URL = getApiUrl();
 
 const Inventory = () => {
   const { user } = useAuth();
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [sellers, setSellers] = useState([]);
   const [formData, setFormData] = useState({
     product_code: '',
@@ -85,17 +97,103 @@ const Inventory = () => {
     }
   };
 
+  const handleBulkUpload = async (e) => {
+    e.preventDefault();
+    if (!uploadFile) return;
+
+    if (user?.role === 'admin' && !formData.seller_id) {
+      alert('Please select a seller');
+      return;
+    }
+
+    setUploading(true);
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', uploadFile);
+    if (user?.role === 'admin' && formData.seller_id) {
+      uploadFormData.append('seller_id', formData.seller_id);
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API_URL}/inventory/bulk-upload`, uploadFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`
+        },
+        timeout: 600000, // 10 minutes
+      });
+
+      const { total, added, updated, skipped, errors } = response.data;
+
+      let message = `✅ Upload Complete!\n\n`;
+      message += `Total Processed: ${total}\n`;
+      message += `Successfully Added: ${added}\n`;
+      message += `Updated: ${updated}\n`;
+      message += `Skipped: ${skipped}\n`;
+
+      if (errors && errors.length > 0) {
+        message += `\nErrors (${errors.length}):\n`;
+        errors.slice(0, 5).forEach((err, idx) => {
+          message += `${idx + 1}. Row ${err.row}: ${err.error}\n`;
+        });
+        if (errors.length > 5) {
+          message += `... and ${errors.length - 5} more errors. Check console for full details.`;
+        }
+        console.error('Upload errors:', errors);
+      }
+
+      alert(message);
+      setShowBulkUploadModal(false);
+      setUploadFile(null);
+      fetchInventory();
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert(error.response?.data?.error || 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const templateData = [
+      {
+        'Product Code': 'KS1',
+        'Product Name': 'Kids Shirt Size 1',
+        'SKU': 'KS1-RED-001',
+        'Quantity': '100',
+        'Box Number': 'B1',
+        'Line Number': 'L1',
+        'Row Number': 'R1',
+        'Color': 'Red',
+        'Category': 'Shirts'
+      }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+    XLSX.writeFile(wb, 'inventory-bulk-upload-template.xlsx');
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold">Inventory Management</h2>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-          >
-            Add Inventory Item
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowBulkUploadModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              📤 Bulk Upload
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+            >
+              + Add Inventory Item
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -323,6 +421,89 @@ const Inventory = () => {
                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
                   >
                     Add Item
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Upload Modal */}
+        {showBulkUploadModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold mb-4">Bulk Upload Inventory</h3>
+              <form onSubmit={handleBulkUpload}>
+                {user?.role === 'admin' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Seller <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={formData.seller_id}
+                      onChange={(e) =>
+                        setFormData({ ...formData, seller_id: e.target.value })
+                      }
+                    >
+                      <option value="">Select Seller</option>
+                      {sellers.map((seller) => (
+                        <option key={seller.id} value={seller.id}>
+                          {seller.name} ({seller.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Upload Excel/CSV File
+                  </label>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => setUploadFile(e.target.files[0])}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Supported formats: .xlsx, .xls, .csv
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                  <p className="text-sm text-blue-800 mb-2">
+                    <strong>Required columns:</strong> Product Code, Product Name, SKU, Quantity
+                  </p>
+                  <p className="text-sm text-blue-800 mb-2">
+                    <strong>Optional columns:</strong> Box Number, Line Number, Row Number, Color, Category
+                  </p>
+                  <button
+                    type="button"
+                    onClick={downloadTemplate}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    📥 Download Template
+                  </button>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBulkUploadModal(false);
+                      setUploadFile(null);
+                    }}
+                    className="px-4 py-2 border rounded-lg"
+                    disabled={uploading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    disabled={uploading || !uploadFile}
+                  >
+                    {uploading ? 'Uploading...' : 'Upload'}
                   </button>
                 </div>
               </form>

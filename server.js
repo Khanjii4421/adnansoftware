@@ -1757,6 +1757,149 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
   }
 });
 
+// Bulk upload inventory items
+app.post('/api/inventory/bulk-upload', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Get seller_id from request (for admin) or use current user (for seller)
+    let finalSellerId = req.body.seller_id;
+    if (req.user.role === 'seller') {
+      finalSellerId = req.user.id;
+    } else if (!finalSellerId) {
+      return res.status(400).json({ error: 'Seller ID is required' });
+    }
+
+    // Parse Excel/CSV file
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    if (jsonData.length === 0) {
+      return res.status(400).json({ error: 'No data found in file' });
+    }
+
+    let totalAdded = 0;
+    let totalUpdated = 0;
+    let totalSkipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      
+      try {
+        // Extract data from row (support multiple column name formats)
+        const product_code = (row['Product Code'] || row['product_code'] || row['ProductCode'] || row['Code'] || row['code'] || '').toString().trim().toUpperCase();
+        const product_name = row['Product Name'] || row['product_name'] || row['ProductName'] || row['Name'] || row['name'] || '';
+        const sku = (row['SKU'] || row['sku'] || row['Sku'] || '').toString().trim();
+        const qty = parseInt(row['Quantity'] || row['quantity'] || row['Qty'] || row['qty'] || row['QTY'] || 0);
+        const box_number = row['Box Number'] || row['box_number'] || row['Box'] || row['box'] || null;
+        const line_number = row['Line Number'] || row['line_number'] || row['Line'] || row['line'] || null;
+        const row_number = row['Row Number'] || row['row_number'] || row['Row'] || row['row'] || null;
+        const color = row['Color'] || row['color'] || null;
+        const category = row['Category'] || row['category'] || null;
+
+        // Validate required fields
+        if (!product_code || !product_name || !sku) {
+          errors.push({ row: i + 2, error: 'Product Code, Product Name, and SKU are required' });
+          totalSkipped++;
+          continue;
+        }
+
+        if (isNaN(qty) || qty < 0) {
+          errors.push({ row: i + 2, error: 'Invalid quantity' });
+          totalSkipped++;
+          continue;
+        }
+
+        // Check if inventory item already exists for this seller and product code
+        const { data: existingInventory } = await supabase
+          .from('inventory')
+          .select('id, qty')
+          .eq('seller_id', finalSellerId)
+          .eq('product_code', product_code)
+          .single();
+
+        if (existingInventory) {
+          // Update existing inventory - add to existing quantity
+          const currentQty = parseInt(existingInventory.qty || 0);
+          const newQty = currentQty + qty;
+          
+          const { error: updateError } = await supabase
+            .from('inventory')
+            .update({
+              qty: newQty,
+              product_name: product_name,
+              sku: sku,
+              box_number: box_number,
+              line_number: line_number,
+              row_number: row_number,
+              color: color,
+              category: category,
+              is_in_stock: newQty > 0,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingInventory.id);
+
+          if (updateError) {
+            errors.push({ row: i + 2, error: updateError.message });
+            totalSkipped++;
+          } else {
+            totalUpdated++;
+          }
+        } else {
+          // Insert new inventory item
+          const inventoryData = {
+            seller_id: finalSellerId,
+            product_code: product_code,
+            product_name: product_name,
+            sku: sku,
+            qty: qty,
+            box_number: box_number,
+            line_number: line_number,
+            row_number: row_number,
+            color: color,
+            category: category,
+            is_in_stock: qty > 0
+          };
+
+          const { error: insertError } = await supabase
+            .from('inventory')
+            .insert(inventoryData);
+
+          if (insertError) {
+            errors.push({ row: i + 2, error: insertError.message });
+            totalSkipped++;
+          } else {
+            totalAdded++;
+          }
+        }
+      } catch (error) {
+        errors.push({ row: i + 2, error: error.message || 'Unknown error' });
+        totalSkipped++;
+      }
+    }
+
+    res.json({
+      total: jsonData.length,
+      added: totalAdded,
+      updated: totalUpdated,
+      skipped: totalSkipped,
+      errors: errors.slice(0, 50) // Limit errors to first 50
+    });
+  } catch (error) {
+    console.error('Error bulk uploading inventory:', error);
+    res.status(500).json({ error: 'Failed to bulk upload inventory' });
+  }
+});
+
 // Get orders KPIs
 app.get('/api/orders/kpis', authenticateToken, async (req, res) => {
   try {
