@@ -71,11 +71,28 @@ app.get('/api/health', (req, res) => {
 
 // Test endpoint for connectivity (no authentication required)
 app.get('/api/test', (req, res) => {
+  console.log('[API Test] Request received:', {
+    method: req.method,
+    path: req.path,
+    url: req.url,
+    hostname: req.hostname,
+    ip: req.ip,
+    origin: req.get('origin')
+  });
+  
   res.json({ 
     message: 'Server is running!',
     timestamp: new Date().toISOString(),
-    headers: req.headers,
-    origin: req.get('origin') || 'no origin header'
+    environment: process.env.NODE_ENV || 'development',
+    port: PORT,
+    host: process.env.HOST || '0.0.0.0',
+    database: isSupabaseConfigured ? 'connected' : 'not configured',
+    request: {
+      method: req.method,
+      path: req.path,
+      hostname: req.hostname,
+      origin: req.get('origin') || 'no origin header'
+    }
   });
 });
 
@@ -5636,37 +5653,66 @@ function generatePurchaseBillHTML(purchase, supplier, items, billDate, paymentHi
 // Serve static files from React app in production
 // Check if build directory exists and NODE_ENV is production
 const buildPath = path.join(__dirname, 'build');
-const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.RAILWAY_PROJECT_ID;
 const buildExists = fs.existsSync(buildPath);
 
+console.log('[Server] Production check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
+  RAILWAY_PROJECT_ID: process.env.RAILWAY_PROJECT_ID ? 'set' : 'not set',
+  isProduction,
+  buildPath,
+  buildExists
+});
+
 if (isProduction && buildExists) {
+  console.log(`✅ Production mode detected. Serving static files from: ${buildPath}`);
+  
+  // IMPORTANT: API routes are already defined above (lines 61-5651)
+  // Express matches specific routes (app.get('/api/test')) BEFORE middleware (app.use())
+  // So API routes will match first, then static middleware
+  
   // Serve static files from the React app - EXCLUDE /api routes
-  // Use middleware to skip API routes before static file serving
-  const staticMiddleware = express.static(buildPath);
-  app.use((req, res, next) => {
-    // Skip static file serving for API routes - let them pass through to API handlers
-    if (req.path.startsWith('/api/')) {
-      return next();
-    }
-    // Serve static files for non-API routes
-    staticMiddleware(req, res, next);
-  });
+  app.use(express.static(buildPath, {
+    // Don't serve index.html for all routes, let API routes handle /api/*
+    index: false
+  }));
   
   // Handle React routing - return all requests to React app (ONLY for non-API routes)
-  // This must be AFTER all API routes are defined
+  // This catch-all route must be AFTER all API routes and static middleware
   app.get('*', (req, res, next) => {
-    // Don't serve React app for API routes - they should have been handled by API routes above
+    // Skip API routes - they should have been handled by API routes above
     if (req.path.startsWith('/api/')) {
-      // This should not happen if API routes are properly defined, but handle it anyway
-      return res.status(404).json({ error: 'API endpoint not found' });
+      // If we reach here, the API route doesn't exist
+      console.warn(`[404] API endpoint not found: ${req.method} ${req.path}`);
+      return res.status(404).json({ 
+        error: 'API endpoint not found',
+        path: req.path,
+        method: req.method,
+        availableEndpoints: [
+          '/api/health',
+          '/api/test',
+          '/api/auth/login',
+          '/api/orders',
+          // ... other endpoints
+        ]
+      });
     }
     // Serve React app for all other routes (SPA routing)
-    res.sendFile(path.join(buildPath, 'index.html'));
+    res.sendFile(path.join(buildPath, 'index.html'), (err) => {
+      if (err) {
+        console.error('Error serving index.html:', err);
+        res.status(500).send('Error loading application');
+      }
+    });
   });
-  console.log(`✅ Serving static files from: ${buildPath}`);
 } else if (isProduction && !buildExists) {
   console.warn(`⚠️  WARNING: Build directory not found at ${buildPath}`);
   console.warn(`   The React app may not be built. Run 'npm run build' first.`);
+  console.warn(`   API endpoints will still work, but frontend will not be served.`);
+} else {
+  console.log('ℹ️  Development mode. Frontend should be running on separate port (react-scripts).');
+  console.log('ℹ️  API endpoints available at: http://localhost:' + PORT + '/api/*');
 }
 
 // Start server
