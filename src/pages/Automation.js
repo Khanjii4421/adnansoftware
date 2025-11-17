@@ -1,0 +1,659 @@
+import React, { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
+import axios from 'axios';
+import * as XLSX from 'xlsx';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
+const Automation = () => {
+  const { user } = useAuth();
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [results, setResults] = useState(null);
+  const [manualUpdates, setManualUpdates] = useState([{ seller_reference_number: '', status: 'delivered' }]);
+  const [activeTab, setActiveTab] = useState('status'); // 'status', 'tracking', 'return-scan'
+  const [trackingUploadFile, setTrackingUploadFile] = useState(null);
+  const [trackingManualUpdates, setTrackingManualUpdates] = useState([{ seller_reference_number: '', tracking_id: '' }]);
+  const [returnScanFile, setReturnScanFile] = useState(null);
+  const [returnScanTrackingIds, setReturnScanTrackingIds] = useState('');
+  const [selectedSeller, setSelectedSeller] = useState('');
+  const [sellers, setSellers] = useState([]);
+
+  useEffect(() => {
+    fetchSellers();
+  }, []);
+
+  const fetchSellers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/sellers`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSellers(response.data.sellers || []);
+    } catch (error) {
+      console.error('Error fetching sellers:', error);
+    }
+  };
+
+  if (user?.role !== 'admin') {
+    return (
+      <Layout>
+        <div className="p-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">Access denied. Only administrators can access this page.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  const handleFileUpload = async (e) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      alert('Please select a file');
+      return;
+    }
+
+    setUploading(true);
+    setResults(null);
+
+    try {
+      // Read the Excel/CSV file
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+          // Process the data
+          const orders = jsonData.map(row => ({
+            seller_reference_number: row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || '',
+            status: (row['Status'] || row['status'] || 'delivered').toLowerCase()
+          })).filter(order => order.seller_reference_number);
+
+          if (orders.length === 0) {
+            alert('No valid orders found in the file. Please check the format.');
+            setUploading(false);
+            return;
+          }
+
+          // Send to API with seller filter
+          if (!selectedSeller) {
+            alert('Please select a seller first');
+            setUploading(false);
+            return;
+          }
+
+          const token = localStorage.getItem('token');
+          const response = await axios.post(
+            `${API_URL}/orders/bulk-update-status`,
+            { orders, status: 'bulk', seller_id: selectedSeller },
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            }
+          );
+
+          setResults(response.data);
+          alert(`Processed ${orders.length} orders: ${response.data.updated.length} updated, ${response.data.errors.length} errors`);
+          setUploadFile(null);
+        } catch (error) {
+          console.error('Error processing file:', error);
+          alert('Error processing file: ' + error.message);
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      reader.readAsArrayBuffer(uploadFile);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file: ' + error.message);
+      setUploading(false);
+    }
+  };
+
+  const handleManualUpdate = async () => {
+    const validUpdates = manualUpdates.filter(update => update.seller_reference_number.trim());
+    
+    if (validUpdates.length === 0) {
+      alert('Please add at least one order to update');
+      return;
+    }
+
+    setUploading(true);
+    setResults(null);
+
+    if (!selectedSeller) {
+      alert('Please select a seller first');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_URL}/orders/bulk-update-status`,
+        { orders: validUpdates, seller_id: selectedSeller },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setResults(response.data);
+      alert(`Processed ${validUpdates.length} orders: ${response.data.updated.length} updated, ${response.data.errors.length} errors`);
+      setManualUpdates([{ seller_reference_number: '', status: 'delivered' }]);
+    } catch (error) {
+      console.error('Error updating orders:', error);
+      alert('Error updating orders: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const addManualRow = () => {
+    setManualUpdates([...manualUpdates, { seller_reference_number: '', status: 'delivered' }]);
+  };
+
+  const removeManualRow = (index) => {
+    setManualUpdates(manualUpdates.filter((_, i) => i !== index));
+  };
+
+  const updateManualRow = (index, field, value) => {
+    const updated = [...manualUpdates];
+    updated[index][field] = value;
+    setManualUpdates(updated);
+  };
+
+  const handleBulkTrackingUpload = async (e) => {
+    e.preventDefault();
+    if (!trackingUploadFile && trackingManualUpdates.filter(u => u.seller_reference_number && u.tracking_id).length === 0) {
+      alert('Please upload a file or enter tracking IDs manually');
+      return;
+    }
+
+    setUploading(true);
+    setResults(null);
+
+    try {
+      let updates = [];
+      
+      if (trackingUploadFile) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+            updates = jsonData.map(row => ({
+              seller_reference_number: row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || '',
+              tracking_id: row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || ''
+            })).filter(u => u.seller_reference_number && u.tracking_id);
+
+            await processTrackingUpdates(updates);
+          } catch (error) {
+            console.error('Error processing file:', error);
+            alert('Error processing file: ' + error.message);
+            setUploading(false);
+          }
+        };
+        reader.readAsArrayBuffer(trackingUploadFile);
+      } else {
+        updates = trackingManualUpdates.filter(u => u.seller_reference_number && u.tracking_id);
+        await processTrackingUpdates(updates);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error: ' + error.message);
+      setUploading(false);
+    }
+  };
+
+  const processTrackingUpdates = async (updates) => {
+    if (!selectedSeller) {
+      alert('Please select a seller first');
+      setUploading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_URL}/orders/bulk-update-tracking`,
+        { updates, seller_id: selectedSeller },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setResults(response.data);
+      alert(`Processed ${updates.length} orders: ${response.data.updated.length} updated, ${response.data.errors.length} errors`);
+      setTrackingUploadFile(null);
+      setTrackingManualUpdates([{ seller_reference_number: '', tracking_id: '' }]);
+    } catch (error) {
+      console.error('Error updating tracking IDs:', error);
+      alert('Error updating tracking IDs: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleBulkReturnScan = async (e) => {
+    e.preventDefault();
+    const trackingIds = returnScanTrackingIds.split('\n').map(id => id.trim()).filter(id => id);
+    
+    if (trackingIds.length === 0 && !returnScanFile) {
+      alert('Please enter tracking IDs or upload a file');
+      return;
+    }
+
+    setUploading(true);
+    setResults(null);
+
+    try {
+      let ids = [];
+      
+      if (returnScanFile) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+            ids = jsonData.map(row => 
+              row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || ''
+            ).filter(id => id);
+
+            await processReturnScan(ids);
+          } catch (error) {
+            console.error('Error processing file:', error);
+            alert('Error processing file: ' + error.message);
+            setUploading(false);
+          }
+        };
+        reader.readAsArrayBuffer(returnScanFile);
+      } else {
+        await processReturnScan(trackingIds);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error: ' + error.message);
+      setUploading(false);
+    }
+  };
+
+  const processReturnScan = async (trackingIds) => {
+    if (!selectedSeller) {
+      alert('Please select a seller first');
+      setUploading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_URL}/orders/bulk-return-scan`,
+        { tracking_ids: trackingIds, seller_id: selectedSeller },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setResults(response.data);
+      alert(`Processed ${trackingIds.length} orders: ${response.data.updated.length} marked as return, ${response.data.errors.length} errors`);
+      setReturnScanFile(null);
+      setReturnScanTrackingIds('');
+    } catch (error) {
+      console.error('Error processing return scan:', error);
+      alert('Error processing return scan: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Layout>
+      <div className="space-y-6 p-6">
+        <h1 className="text-3xl font-bold text-gray-900">Automation & Bulk Operations</h1>
+        <p className="text-gray-600">Manage orders in bulk - status updates, tracking IDs, and return scans</p>
+
+        {/* Seller Selection */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Seller <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={selectedSeller}
+            onChange={(e) => setSelectedSeller(e.target.value)}
+            className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            required
+          >
+            <option value="">-- Select Seller --</option>
+            {sellers.map((seller) => (
+              <option key={seller.id} value={seller.id}>
+                {seller.name} ({seller.email})
+              </option>
+            ))}
+          </select>
+          {selectedSeller && (
+            <p className="mt-2 text-sm text-green-600">
+              ✓ Orders will be updated only for selected seller
+            </p>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex space-x-4 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('status')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'status'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Status Updates
+          </button>
+          <button
+            onClick={() => setActiveTab('tracking')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'tracking'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Bulk Tracking ID
+          </button>
+          <button
+            onClick={() => setActiveTab('return-scan')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'return-scan'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Bulk Return Scan
+          </button>
+        </div>
+
+        {/* Status Update Tab */}
+        {activeTab === 'status' && (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* File Upload Section */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">📤 Upload CSV/Excel File</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Upload a file with columns: <strong>Reference Number</strong> (or Ref #) and <strong>Status</strong> (delivered, return, paid)
+            </p>
+            <form onSubmit={handleFileUpload}>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => setUploadFile(e.target.files[0])}
+                className="mb-4 w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <button
+                type="submit"
+                disabled={!uploadFile || uploading}
+                className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50 hover:bg-indigo-700"
+              >
+                {uploading ? 'Processing...' : 'Upload & Update'}
+              </button>
+            </form>
+          </div>
+
+          {/* Manual Update Section */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">✏️ Manual Update</h2>
+            <div className="space-y-2 mb-4">
+              {manualUpdates.map((update, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="Reference Number"
+                    value={update.seller_reference_number}
+                    onChange={(e) => updateManualRow(index, 'seller_reference_number', e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <select
+                    value={update.status}
+                    onChange={(e) => updateManualRow(index, 'status', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="delivered">Delivered</option>
+                    <option value="returned">Returned</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                  {manualUpdates.length > 1 && (
+                    <button
+                      onClick={() => removeManualRow(index)}
+                      className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={addManualRow}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                + Add Row
+              </button>
+              <button
+                onClick={handleManualUpdate}
+                disabled={uploading}
+                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50 hover:bg-indigo-700"
+              >
+                Update Orders
+              </button>
+            </div>
+          </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-6">
+              <h3 className="font-semibold text-blue-900 mb-2">📝 Instructions</h3>
+              <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
+                <li>File format: CSV or Excel (.xlsx, .xls)</li>
+                <li>Required columns: Reference Number (or Ref #) and Status</li>
+                <li>Status values: delivered, returned, paid</li>
+                <li>Reference numbers must match existing orders</li>
+                <li>You can update multiple orders at once</li>
+              </ul>
+            </div>
+          </>
+        )}
+
+        {/* Bulk Tracking ID Tab */}
+        {activeTab === 'tracking' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">📤 Upload CSV/Excel File</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload a file with columns: <strong>Reference Number</strong> and <strong>Tracking ID</strong>
+              </p>
+              <form onSubmit={handleBulkTrackingUpload}>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setTrackingUploadFile(e.target.files[0])}
+                  className="mb-4 w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+                <button
+                  type="submit"
+                  disabled={!trackingUploadFile || uploading}
+                  className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50 hover:bg-indigo-700"
+                >
+                  {uploading ? 'Processing...' : 'Upload & Update'}
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">✏️ Manual Update</h2>
+              <div className="space-y-2 mb-4">
+                {trackingManualUpdates.map((update, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder="Reference Number"
+                      value={update.seller_reference_number}
+                      onChange={(e) => {
+                        const updated = [...trackingManualUpdates];
+                        updated[index].seller_reference_number = e.target.value;
+                        setTrackingManualUpdates(updated);
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tracking ID"
+                      value={update.tracking_id}
+                      onChange={(e) => {
+                        const updated = [...trackingManualUpdates];
+                        updated[index].tracking_id = e.target.value;
+                        setTrackingManualUpdates(updated);
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    {trackingManualUpdates.length > 1 && (
+                      <button
+                        onClick={() => setTrackingManualUpdates(trackingManualUpdates.filter((_, i) => i !== index))}
+                        className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTrackingManualUpdates([...trackingManualUpdates, { seller_reference_number: '', tracking_id: '' }])}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  + Add Row
+                </button>
+                <button
+                  onClick={handleBulkTrackingUpload}
+                  disabled={uploading}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50 hover:bg-indigo-700"
+                >
+                  Update Tracking IDs
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Return Scan Tab */}
+        {activeTab === 'return-scan' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">📤 Upload CSV/Excel File</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Upload a file with <strong>Tracking ID</strong> column. Each tracking ID will be marked as return automatically.
+              </p>
+              <form onSubmit={handleBulkReturnScan}>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setReturnScanFile(e.target.files[0])}
+                  className="mb-4 w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+                <button
+                  type="submit"
+                  disabled={!returnScanFile || uploading}
+                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 hover:bg-red-700"
+                >
+                  {uploading ? 'Processing...' : 'Scan & Mark Returns'}
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">✏️ Manual Entry</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter tracking IDs (one per line). Orders will be automatically marked as return when scanned.
+              </p>
+              <textarea
+                value={returnScanTrackingIds}
+                onChange={(e) => setReturnScanTrackingIds(e.target.value)}
+                placeholder="Enter tracking IDs, one per line:&#10;TRACK001&#10;TRACK002&#10;TRACK003"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 h-48"
+                rows="10"
+              />
+              <button
+                onClick={handleBulkReturnScan}
+                disabled={uploading || !returnScanTrackingIds.trim()}
+                className="w-full px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 hover:bg-red-700"
+              >
+                {uploading ? 'Processing...' : 'Scan & Mark Returns'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Results Section - Show for all tabs */}
+        {results && (
+          <div className="bg-white rounded-lg shadow p-6 mt-6">
+            <h2 className="text-xl font-semibold mb-4">📊 Update Results</h2>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm text-green-600 font-medium">Successfully Updated</p>
+                <p className="text-2xl font-bold text-green-700">{results.updated?.length || 0}</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-600 font-medium">Errors</p>
+                <p className="text-2xl font-bold text-red-700">{results.errors?.length || 0}</p>
+              </div>
+            </div>
+
+            {results.errors && results.errors.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-red-600 mb-2">Errors:</h3>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-48 overflow-y-auto">
+                  {results.errors.map((error, index) => (
+                    <div key={index} className="text-sm text-red-700 mb-1">
+                      <strong>{error.ref || error.tracking_id || 'N/A'}:</strong> {error.error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {results.updated && results.updated.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-green-600 mb-2">Updated Orders:</h3>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-h-48 overflow-y-auto">
+                  <div className="flex flex-wrap gap-2">
+                    {results.updated.map((ref, index) => (
+                      <span key={index} className="px-2 py-1 bg-green-200 text-green-800 rounded text-sm">
+                        {ref}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+};
+
+export default Automation;
+
