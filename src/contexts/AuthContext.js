@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
+import { getApiUrl } from '../utils/api';
 
 const AuthContext = createContext();
 
@@ -11,31 +12,23 @@ export const useAuth = () => {
   return context;
 };
 
-// API URL Helper - Automatically detects environment
-const getApiUrl = () => {
-  // If REACT_APP_API_URL is set, use it (for production)
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-
-  // If running on production domain (not localhost), use relative URL
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168')) {
-      return `${window.location.protocol}//${window.location.host}/api`;
-    }
-  }
-
-  // Default to localhost for development
-  return 'http://localhost:3000/api';
-};
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
-  const API_URL = getApiUrl();
+  // Get API URL dynamically - don't cache at component level
+  // This ensures it works on mobile browsers too
+  const getCurrentApiUrl = () => {
+    const apiUrl = getApiUrl();
+    // Debug logging for mobile
+    if (typeof window !== 'undefined') {
+      console.log('[AuthContext] API URL:', apiUrl);
+      console.log('[AuthContext] Window location:', window.location.href);
+      console.log('[AuthContext] Hostname:', window.location.hostname);
+    }
+    return apiUrl;
+  };
 
   useEffect(() => {
     if (token) {
@@ -60,10 +53,12 @@ export const AuthProvider = ({ children }) => {
 
   const fetchCurrentUser = async () => {
     try {
-      const response = await axios.get(`${API_URL}/auth/me`);
+      const apiUrl = getCurrentApiUrl(); // Get API URL dynamically
+      const response = await axios.get(`${apiUrl}/auth/me`);
       setUser(response.data.user);
     } catch (error) {
       console.error('Error fetching user:', error);
+      console.error('API URL used:', getCurrentApiUrl());
       logout();
     } finally {
       setLoading(false);
@@ -72,11 +67,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
+      const apiUrl = getCurrentApiUrl(); // Get API URL dynamically for each request
+      console.log('[Login] Attempting login with API URL:', apiUrl);
+      
+      const response = await axios.post(`${apiUrl}/auth/login`, {
         email,
         password,
       }, {
-        timeout: 10000, // 10 seconds timeout
+        timeout: 15000, // 15 seconds timeout for mobile
       });
       const { access_token, user } = response.data;
       setToken(access_token);

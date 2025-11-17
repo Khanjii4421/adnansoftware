@@ -4,37 +4,74 @@
 let cachedApiUrl = null;
 
 export const getApiUrl = () => {
-  // Return cached URL if already calculated (after first call)
-  if (cachedApiUrl !== null && typeof window !== 'undefined') {
-    return cachedApiUrl;
-  }
-
   // If REACT_APP_API_URL is set, use it (for production)
+  // This is set at build time, so check it first
   if (process.env.REACT_APP_API_URL) {
-    cachedApiUrl = process.env.REACT_APP_API_URL;
-    console.log('[API] Using REACT_APP_API_URL:', cachedApiUrl);
+    const url = process.env.REACT_APP_API_URL;
+    if (!cachedApiUrl || cachedApiUrl !== url) {
+      cachedApiUrl = url;
+      console.log('[API] Using REACT_APP_API_URL:', cachedApiUrl);
+    }
     return cachedApiUrl;
   }
 
   // If running on production domain (not localhost), use relative URL
+  // This is checked at runtime, so it works on mobile browsers
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     const port = window.location.port;
     const host = window.location.host;
+    const origin = window.location.origin;
     
     // Check if running on a production domain
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168')) {
-      cachedApiUrl = `${protocol}//${host}/api`;
-      console.log('[API] Production mode detected. Using relative URL:', cachedApiUrl);
-      console.log('[API] Hostname:', hostname, 'Protocol:', protocol, 'Port:', port);
+    // Exclude localhost, 127.0.0.1, and local network (192.168, 10.0, 172.16)
+    const isLocalhost = hostname === 'localhost' || 
+                        hostname === '127.0.0.1' || 
+                        hostname.startsWith('192.168.') ||
+                        hostname.startsWith('10.') ||
+                        hostname.startsWith('172.16.') ||
+                        hostname.startsWith('172.17.') ||
+                        hostname.startsWith('172.18.') ||
+                        hostname.startsWith('172.19.') ||
+                        hostname.startsWith('172.20.') ||
+                        hostname.startsWith('172.21.') ||
+                        hostname.startsWith('172.22.') ||
+                        hostname.startsWith('172.23.') ||
+                        hostname.startsWith('172.24.') ||
+                        hostname.startsWith('172.25.') ||
+                        hostname.startsWith('172.26.') ||
+                        hostname.startsWith('172.27.') ||
+                        hostname.startsWith('172.28.') ||
+                        hostname.startsWith('172.29.') ||
+                        hostname.startsWith('172.30.') ||
+                        hostname.startsWith('172.31.');
+    
+    if (!isLocalhost) {
+      // Production domain - use relative URL
+      const apiUrl = `${origin}/api`;
+      if (!cachedApiUrl || cachedApiUrl !== apiUrl) {
+        cachedApiUrl = apiUrl;
+        console.log('[API] Production mode detected. Using relative URL:', cachedApiUrl);
+        console.log('[API] Full URL info:', {
+          hostname,
+          protocol,
+          port,
+          host,
+          origin,
+          apiUrl
+        });
+      }
       return cachedApiUrl;
     }
   }
 
   // Default to localhost for development
-  cachedApiUrl = 'http://localhost:3000/api';
-  console.log('[API] Development mode. Using default URL:', cachedApiUrl);
+  const defaultUrl = 'http://localhost:3000/api';
+  if (!cachedApiUrl || cachedApiUrl !== defaultUrl) {
+    cachedApiUrl = defaultUrl;
+    console.log('[API] Development mode. Using default URL:', cachedApiUrl);
+  }
   return cachedApiUrl;
 };
 
