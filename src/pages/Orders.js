@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-import { API_URL } from '../utils/api';
+import { API_URL, getApiUrl } from '../utils/api';
 
 const Orders = () => {
   const { user } = useAuth();
@@ -140,6 +140,16 @@ const Orders = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      
+      // Refresh API URL in case it changed
+      const currentApiUrl = getApiUrl();
+      console.log('[Orders] Fetching from API URL:', currentApiUrl);
+      
+      if (!token) {
+        alert('No authentication token found. Please login again.');
+        return;
+      }
+
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
       if (sellerFilter && user?.role === 'admin') params.append('seller_id', sellerFilter);
@@ -147,8 +157,12 @@ const Orders = () => {
       if (todayOnly) params.append('today_only', 'true');
       if (paidFilter !== '') params.append('is_paid', paidFilter);
 
-      const response = await axios.get(`${API_URL}/orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const url = `${currentApiUrl}/orders?${params}`;
+      console.log('[Orders] Request URL:', url);
+
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000 // 30 second timeout
       });
       console.log('Orders response:', response.data);
       const ordersData = response.data.orders || [];
@@ -162,8 +176,27 @@ const Orders = () => {
       setOrders(ordersData);
     } catch (error) {
       console.error('Error fetching orders:', error);
-      console.error('Error response:', error.response?.data);
-      alert(`Failed to fetch orders: ${error.response?.data?.error || error.message}`);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method
+        }
+      });
+      
+      let errorMessage = 'Failed to fetch orders';
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+        errorMessage = 'Network error: Cannot connect to server. Please check if the backend server is running.';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
       setOrders([]);
     } finally {
       setLoading(false);

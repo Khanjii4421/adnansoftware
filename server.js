@@ -14,7 +14,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+// CORS configuration - allow all origins for production
+app.use(cors({
+  origin: '*', // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -47,12 +57,25 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Health check endpoint
+// Health check endpoint (no authentication required for basic health check)
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     database: isSupabaseConfigured ? 'connected' : 'not configured',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    port: PORT,
+    host: process.env.HOST || '0.0.0.0'
+  });
+});
+
+// Test endpoint for connectivity (no authentication required)
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    message: 'Server is running!',
+    timestamp: new Date().toISOString(),
+    headers: req.headers,
+    origin: req.get('origin') || 'no origin header'
   });
 });
 
@@ -5617,15 +5640,27 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWA
 const buildExists = fs.existsSync(buildPath);
 
 if (isProduction && buildExists) {
-  // Serve static files from the React app
-  app.use(express.static(buildPath));
-  
-  // Handle React routing, return all requests to React app
-  app.get('*', (req, res) => {
-    // Don't serve React app for API routes
+  // Serve static files from the React app - EXCLUDE /api routes
+  // Use middleware to skip API routes before static file serving
+  const staticMiddleware = express.static(buildPath);
+  app.use((req, res, next) => {
+    // Skip static file serving for API routes - let them pass through to API handlers
     if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    // Serve static files for non-API routes
+    staticMiddleware(req, res, next);
+  });
+  
+  // Handle React routing - return all requests to React app (ONLY for non-API routes)
+  // This must be AFTER all API routes are defined
+  app.get('*', (req, res, next) => {
+    // Don't serve React app for API routes - they should have been handled by API routes above
+    if (req.path.startsWith('/api/')) {
+      // This should not happen if API routes are properly defined, but handle it anyway
       return res.status(404).json({ error: 'API endpoint not found' });
     }
+    // Serve React app for all other routes (SPA routing)
     res.sendFile(path.join(buildPath, 'index.html'));
   });
   console.log(`✅ Serving static files from: ${buildPath}`);

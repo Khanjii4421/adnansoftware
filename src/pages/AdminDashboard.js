@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { API_URL } from '../utils/api';
+import { getApiUrl } from '../utils/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
 
@@ -28,7 +28,8 @@ const AdminDashboard = () => {
     const fetchSellers = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_URL}/sellers`, {
+        const apiUrl = getApiUrl(); // Get API URL dynamically
+        const response = await axios.get(`${apiUrl}/sellers`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setSellers(response.data.sellers || []);
@@ -50,17 +51,20 @@ const AdminDashboard = () => {
         params.seller_id = selectedSeller;
       }
       
+      // Get API URL dynamically
+      const apiUrl = getApiUrl();
+      
       // Parallel requests for better performance
       const [statsRes, kpiRes, lowStockRes] = await Promise.all([
-        axios.get(`${API_URL}/dashboard/stats`, {
+        axios.get(`${apiUrl}/dashboard/stats`, {
           headers: { Authorization: `Bearer ${token}` },
           params: params
         }),
-        axios.get(`${API_URL}/orders/kpis`, {
+        axios.get(`${apiUrl}/orders/kpis`, {
           headers: { Authorization: `Bearer ${token}` },
           params: params
         }),
-        axios.get(`${API_URL}/inventory/low-stock`, {
+        axios.get(`${apiUrl}/inventory/low-stock`, {
           headers: { Authorization: `Bearer ${token}` },
           params: selectedSeller ? { seller_id: selectedSeller } : {}
         }).catch(() => ({ data: { inventory: [] } })) // Don't fail if low stock fails
