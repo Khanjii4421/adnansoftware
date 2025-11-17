@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
 const Inventory = () => {
+  const { user } = useAuth();
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [sellers, setSellers] = useState([]);
   const [formData, setFormData] = useState({
     product_code: '',
     product_name: '',
@@ -18,11 +21,27 @@ const Inventory = () => {
     row_number: '',
     color: '',
     category: '',
+    seller_id: '',
   });
 
   useEffect(() => {
     fetchInventory();
-  }, []);
+    if (user?.role === 'admin') {
+      fetchSellers();
+    }
+  }, [user]);
+
+  const fetchSellers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/sellers`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSellers(response.data.sellers || []);
+    } catch (error) {
+      console.error('Error fetching sellers:', error);
+    }
+  };
 
   const fetchInventory = async () => {
     try {
@@ -58,6 +77,7 @@ const Inventory = () => {
         row_number: '',
         color: '',
         category: '',
+        seller_id: '',
       });
       fetchInventory();
     } catch (error) {
@@ -156,9 +176,31 @@ const Inventory = () => {
               <h3 className="text-lg font-semibold mb-4">Add Inventory Item</h3>
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-2 gap-4">
+                  {user?.role === 'admin' && (
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Seller <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                        value={formData.seller_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, seller_id: e.target.value })
+                        }
+                      >
+                        <option value="">Select Seller</option>
+                        {sellers.map((seller) => (
+                          <option key={seller.id} value={seller.id}>
+                            {seller.name} ({seller.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Product Code
+                      Product Code <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -172,7 +214,7 @@ const Inventory = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Product Name
+                      Product Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -185,7 +227,7 @@ const Inventory = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">SKU</label>
+                    <label className="block text-sm font-medium text-gray-700">SKU <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       required
@@ -195,7 +237,7 @@ const Inventory = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Quantity</label>
+                    <label className="block text-sm font-medium text-gray-700">Quantity <span className="text-red-500">*</span></label>
                     <input
                       type="number"
                       required
