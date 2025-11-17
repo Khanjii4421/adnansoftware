@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
+import { API_URL } from '../utils/api';
 
 // Get user from localStorage since useAuth might not be available
 const getCurrentUser = () => {
@@ -11,8 +12,6 @@ const getCurrentUser = () => {
     return null;
   }
 };
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
 const ReturnManagement = () => {
   const [user, setUser] = useState(getCurrentUser());

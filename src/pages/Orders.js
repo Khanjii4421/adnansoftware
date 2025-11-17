@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/api';
 
 const Orders = () => {
   const { user } = useAuth();

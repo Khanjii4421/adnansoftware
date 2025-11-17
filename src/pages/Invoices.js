@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/api';
 
 const Invoices = () => {
   const { user } = useAuth();

@@ -2544,8 +2544,17 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
 <body>
   <div class="container">
     <div class="header">
-      <h1>INVOICE</h1>
-      <p>Bill Number: ${invoice.bill_number}</p>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;">
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="color: white; font-size: 32px; font-weight: bold;">AK</div>
+        </div>
+        <div>
+          <h1 style="color: #1e40af; font-size: 32px; margin: 0;">ADNAN KHADAR HOUSE</h1>
+          <p style="color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600;">High Quality</p>
+        </div>
+      </div>
+      <h2 style="color: #4F46E5; font-size: 24px; margin-top: 15px;">INVOICE</h2>
+      <p style="font-size: 16px; color: #666;">Bill Number: ${invoice.bill_number}</p>
     </div>
     
     <div class="invoice-info">
@@ -3918,8 +3927,17 @@ app.get('/api/bills/customer/:customer_id/unpaid-pdf', authenticateToken, async 
 <body>
   <div class="container">
     <div class="header">
-      <h1>UNPAID BILLS REPORT <span class="urdu">غیر ادا شدہ بلوں کی رپورٹ</span></h1>
-      <p>Generated on <span class="urdu">تاریخ</span>: ${new Date().toLocaleString()}</p>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;">
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="color: white; font-size: 32px; font-weight: bold;">AK</div>
+        </div>
+        <div>
+          <h1 style="color: #1e40af; font-size: 32px; margin: 0;">ADNAN KHADAR HOUSE</h1>
+          <p style="color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600;">High Quality</p>
+        </div>
+      </div>
+      <h2 style="color: #EF4444; font-size: 24px; margin-top: 15px;">UNPAID BILLS REPORT <span class="urdu">غیر ادا شدہ بلوں کی رپورٹ</span></h2>
+      <p style="font-size: 14px; color: #666; margin-top: 10px;">Generated on <span class="urdu">تاریخ</span>: ${new Date().toLocaleString()}</p>
     </div>
     <div class="customer-info">
       <h3>Customer <span class="urdu">کسٹمر</span>: ${customer.name}</h3>
@@ -4338,9 +4356,18 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
 <body>
   <div class="bill-container">
     <div class="header">
-      <h1>BILL <span class="urdu">بل</span></h1>
-      <p>Bill Number <span class="urdu">بل نمبر</span>: <strong>${bill_number}</strong></p>
-      <p>Date <span class="urdu">تاریخ</span>: ${new Date(billDate).toLocaleDateString()}</p>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;">
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="color: white; font-size: 32px; font-weight: bold;">AK</div>
+        </div>
+        <div>
+          <h1 style="color: #1e40af; font-size: 32px; margin: 0;">ADNAN KHADAR HOUSE</h1>
+          <p style="color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600;">High Quality</p>
+        </div>
+      </div>
+      <h2 style="color: #4F46E5; font-size: 24px; margin-top: 15px;">BILL <span class="urdu">بل</span></h2>
+      <p style="font-size: 16px; color: #666;">Bill Number <span class="urdu">بل نمبر</span>: <strong>${bill_number}</strong></p>
+      <p style="font-size: 14px; color: #666;">Date <span class="urdu">تاریخ</span>: ${new Date(billDate).toLocaleDateString()}</p>
     </div>
     <div class="info-section">
       <div class="info-box">
@@ -5445,9 +5472,17 @@ function generatePurchaseBillHTML(purchase, supplier, items, billDate, paymentHi
 <body>
   <div class="container">
     <div class="header">
-      <h1>PURCHASE BILL <span class="urdu">خریداری کا بل</span></h1>
-      <h2>${brandInfo.name}</h2>
-      <p>${brandInfo.address} | ${brandInfo.phone}</p>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;">
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="color: white; font-size: 32px; font-weight: bold;">AK</div>
+        </div>
+        <div>
+          <h1 style="color: #1e40af; font-size: 32px; margin: 0;">ADNAN KHADAR HOUSE</h1>
+          <p style="color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600;">High Quality</p>
+        </div>
+      </div>
+      <h2 style="color: #10B981; font-size: 24px; margin-top: 15px;">PURCHASE BILL <span class="urdu">خریداری کا بل</span></h2>
+      <p style="font-size: 14px; color: #666; margin-top: 10px;">${brandInfo.address} | ${brandInfo.phone}</p>
     </div>
     
     <div class="bill-info">

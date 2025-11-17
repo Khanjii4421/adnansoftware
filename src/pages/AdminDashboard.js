@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
 
@@ -49,15 +48,23 @@ const AdminDashboard = () => {
       const params = {};
       if (selectedSeller) {
         params.seller_id = selectedSeller;
-        console.log('[AdminDashboard] Fetching data for seller_id:', selectedSeller);
-      } else {
-        console.log('[AdminDashboard] Fetching data for all sellers');
       }
       
-      const statsRes = await axios.get(`${API_URL}/dashboard/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: params
-      });
+      // Parallel requests for better performance
+      const [statsRes, kpiRes, lowStockRes] = await Promise.all([
+        axios.get(`${API_URL}/dashboard/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: params
+        }),
+        axios.get(`${API_URL}/orders/kpis`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: params
+        }),
+        axios.get(`${API_URL}/inventory/low-stock`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: selectedSeller ? { seller_id: selectedSeller } : {}
+        }).catch(() => ({ data: { inventory: [] } })) // Don't fail if low stock fails
+      ]);
       
       console.log('[AdminDashboard] Stats response:', {
         totalOrders: statsRes.data.stats?.totalOrders,
@@ -89,34 +96,16 @@ const AdminDashboard = () => {
         incomingStats.admin_profit = 0;
       }
 
-      // Fetch low stock - include seller_id if filtering
-      try {
-        const lowStockParams = {};
-        if (selectedSeller) {
-          lowStockParams.seller_id = selectedSeller;
-        }
-        const lowStockRes = await axios.get(`${API_URL}/inventory/low-stock`, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: lowStockParams
-        });
-        setLowStock(lowStockRes.data.inventory?.slice(0, 10) || []);
-      } catch (err) {
-        console.error('Error fetching low stock:', err);
-        setLowStock([]);
-      }
+      // Set low stock from parallel request
+      setLowStock(lowStockRes.data.inventory?.slice(0, 10) || []);
 
       // Get additional KPI data from stats response
       const product_kpis = incomingStats.product_kpis || statsRes.data.product_kpis || [];
       const city_kpis = incomingStats.city_kpis || statsRes.data.city_kpis || [];
       const daily_trends = incomingStats.daily_trends || statsRes.data.daily_trends || [];
 
-      // Fetch Orders KPIs
-      try {
-        const kpiRes = await axios.get(`${API_URL}/orders/kpis`, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: params
-        });
-        const payload = kpiRes.data || {};
+      // Process KPIs from parallel request
+      const payload = kpiRes.data || {};
         // Ensure product codes are shown case-insensitively (backend already uppercases)
         const productKpis = Array.isArray(payload.product_kpis) ? payload.product_kpis : product_kpis;
         const deliveredData = Array.isArray(payload.delivered_data) ? payload.delivered_data : [];
@@ -162,6 +151,7 @@ const AdminDashboard = () => {
           summary
         });
       } catch (err) {
+        console.error('Error processing KPIs:', err);
         setKpis({ 
           product_kpis: product_kpis, 
           city_kpis: city_kpis,

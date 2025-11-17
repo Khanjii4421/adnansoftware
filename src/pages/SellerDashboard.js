@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import axios from 'axios';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/api';
 
 const COLORS = ['#00C49F', '#FF8042', '#FFBB28', '#8884D8'];
 

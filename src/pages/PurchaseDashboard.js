@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/api';
 
 const PurchaseDashboard = () => {
   const [dashboardStats, setDashboardStats] = useState({

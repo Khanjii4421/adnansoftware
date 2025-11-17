@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+import { API_URL } from '../utils/api';
 
 const ReturnScan = () => {
   const { user } = useAuth();

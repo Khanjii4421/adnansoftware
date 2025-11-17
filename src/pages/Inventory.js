@@ -4,15 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
-// Auto-detect API URL
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.protocol}//${window.location.host}/api`;
-  }
-  return 'http://localhost:3000/api';
-};
-const API_URL = getApiUrl();
+import { API_URL } from '../utils/api';
 
 const Inventory = () => {
   const { user } = useAuth();

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Footer from './Footer';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -194,7 +195,10 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0 bg-gray-50">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0 bg-gray-50">
+          {children}
+        </main>
+        <Footer />
       </div>
     </div>
   );
