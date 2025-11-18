@@ -25,8 +25,51 @@ app.use(cors({
 // Handle preflight requests
 app.options('*', cors());
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Security: Limit request size
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Security: Basic input sanitization middleware
+const sanitizeInput = (req, res, next) => {
+  const sanitize = (obj) => {
+    if (typeof obj === 'string') {
+      // Remove potentially dangerous characters
+      return obj.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                .replace(/javascript:/gi, '')
+                .replace(/on\w+\s*=/gi, '');
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(sanitize);
+    }
+    if (obj && typeof obj === 'object') {
+      const sanitized = {};
+      for (const key in obj) {
+        sanitized[key] = sanitize(obj[key]);
+      }
+      return sanitized;
+    }
+    return obj;
+  };
+
+  if (req.body) {
+    req.body = sanitize(req.body);
+  }
+  if (req.query) {
+    req.query = sanitize(req.query);
+  }
+  if (req.params) {
+    req.params = sanitize(req.params);
+  }
+  next();
+};
+
+// Apply sanitization to all routes except file uploads
+app.use((req, res, next) => {
+  if (req.path.includes('/bulk-upload') || req.path.includes('/upload')) {
+    return next();
+  }
+  sanitizeInput(req, res, next);
+});
 
 // Multer configuration for file uploads
 const upload = multer({ 
@@ -37,7 +80,7 @@ const upload = multer({
 // Check if Supabase is configured
 const isSupabaseConfigured = supabase && !supabase.__isStub && supabase.isConfigured;
 
-// Authentication Middleware
+// Authentication Middleware with security enhancements
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -46,12 +89,24 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access token required' });
   }
 
+  // Security: Validate token format
+  if (typeof token !== 'string' || token.length < 10) {
+    return res.status(403).json({ error: 'Invalid token format' });
+  }
+
   const jwtSecret = process.env.JWT_SECRET_KEY || 'your-secret-key-change-in-production';
   
   jwt.verify(token, jwtSecret, (err, user) => {
     if (err) {
+      console.error('[Auth] Token verification failed:', err.message);
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
+    
+    // Security: Validate user object
+    if (!user || !user.id || !user.email) {
+      return res.status(403).json({ error: 'Invalid token payload' });
+    }
+    
     req.user = user;
     next();
   });

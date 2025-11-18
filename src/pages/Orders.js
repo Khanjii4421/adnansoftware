@@ -4,11 +4,13 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useErrorHandler } from '../components/ErrorHandler';
 
 import { API_URL, getApiUrl } from '../utils/api';
 
 const Orders = () => {
   const { user } = useAuth();
+  const { showError } = useErrorHandler();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -196,7 +198,7 @@ const Orders = () => {
         errorMessage = error.message;
       }
       
-      alert(errorMessage);
+      showError(errorMessage);
       setOrders([]);
     } finally {
       setLoading(false);
@@ -363,6 +365,35 @@ const Orders = () => {
       }
 
       const token = localStorage.getItem('token');
+      
+      // Check for out of stock products
+      if (orderFormData.product_codes) {
+        const productCodes = orderFormData.product_codes.split(',').map(code => code.trim().toUpperCase()).filter(code => code);
+        const sellerId = user?.role === 'admin' ? orderFormData.seller_id : user?.id;
+        
+        if (sellerId && productCodes.length > 0) {
+          try {
+            const outOfStockResponse = await axios.get(`${API_URL}/inventory/out-of-stock-managed`, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { seller_id: sellerId }
+            });
+            
+            const outOfStockProducts = outOfStockResponse.data.products || [];
+            const outOfStockCodes = outOfStockProducts.map(p => p.product_code.toUpperCase());
+            const foundOutOfStock = productCodes.filter(code => outOfStockCodes.includes(code));
+            
+            if (foundOutOfStock.length > 0) {
+              const confirmMessage = `⚠️ WARNING: The following products are marked as OUT OF STOCK:\n\n${foundOutOfStock.join(', ')}\n\nDo you still want to create this order?`;
+              if (!window.confirm(confirmMessage)) {
+                return;
+              }
+            }
+          } catch (error) {
+            console.error('Error checking out of stock products:', error);
+            // Continue with order creation even if check fails
+          }
+        }
+      }
       
       // Handle shipper_price - DB-friendly format
       // Empty string or undefined → null, otherwise → Number

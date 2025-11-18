@@ -19,6 +19,7 @@ import LedgerEntries from './pages/LedgerEntries';
 import GenerateBill from './pages/GenerateBill';
 import OutOfStock from './pages/OutOfStock';
 import InvoiceMatch from './pages/InvoiceMatch';
+import Settings from './pages/Settings';
 import Suppliers from './pages/Suppliers';
 import PurchaseEntry from './pages/PurchaseEntry';
 import PurchaseDashboard from './pages/PurchaseDashboard';
@@ -201,6 +202,14 @@ function App() {
             element={
               <PrivateRoute>
                 <OutOfStock />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PrivateRoute>
+                <Settings />
               </PrivateRoute>
             }
           />

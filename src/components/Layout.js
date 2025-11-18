@@ -3,11 +3,31 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Footer from './Footer';
 import WelcomeMessage from './WelcomeMessage';
+import ErrorHandler, { useErrorHandler } from './ErrorHandler';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { error, showError, clearError } = useErrorHandler();
+
+  // Global error handler for axios
+  useEffect(() => {
+    const axiosInterceptor = (error) => {
+      if (error.response) {
+        showError(error.response.data?.error || 'An error occurred', error.response.data?.details);
+      } else if (error.request) {
+        showError('Network error: Unable to connect to server');
+      } else {
+        showError(error.message || 'An unexpected error occurred');
+      }
+    };
+
+    // You can add axios interceptor here if needed
+    return () => {
+      // Cleanup if needed
+    };
+  }, [showError]);
   
   // Load sidebar state from localStorage, default to true for desktop
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -227,6 +247,7 @@ const Layout = ({ children }) => {
     { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-amber-50', textColor: 'text-amber-700', hoverBg: 'hover:bg-amber-100' },
     { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-teal-50', textColor: 'text-teal-700', hoverBg: 'hover:bg-teal-100' },
     { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
+    { path: '/settings', label: 'Settings', icon: '⚙️', bgColor: 'bg-gray-50', textColor: 'text-gray-700', hoverBg: 'hover:bg-gray-100' },
   ];
 
   const menuItems = user?.role === 'admin' ? adminMenuItems : sellerMenuItems;
@@ -369,6 +390,7 @@ const Layout = ({ children }) => {
         </main>
         <Footer />
       </div>
+      <ErrorHandler error={error} onClose={clearError} />
     </div>
   );
 };
