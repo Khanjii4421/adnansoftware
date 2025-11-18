@@ -25,8 +25,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 async function createAdminUser() {
   try {
-    const email = 'adnan@gmail.com';
-    const password = '1234';
+    const email = 'khanjii4421@gmail.com';
+    const password = 'Khan';
     const name = 'Adnan Admin';
     const role = 'admin';
 
@@ -95,8 +95,8 @@ async function createAdminUser() {
     }
 
     console.log('\n🎉 Done! You can now login with:');
-    console.log('   Email: adnan@gmail.com');
-    console.log('   Password: 1234\n');
+    console.log('   Email: khanjii4421@gmail.com');
+    console.log('   Password: khan\n');
 
   } catch (error) {
     console.error('❌ Unexpected error:', error);
