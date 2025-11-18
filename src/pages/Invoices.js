@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 import { API_URL } from '../utils/api';
 
@@ -26,6 +27,11 @@ const Invoices = () => {
   });
   const [filterSellerId, setFilterSellerId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchByTracking, setSearchByTracking] = useState('');
+  const [searchByReference, setSearchByReference] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchOrderDetails, setSearchOrderDetails] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
 
@@ -379,8 +385,48 @@ const Invoices = () => {
     return `Rs. ${parseFloat(amount || 0).toFixed(2)}`;
   };
 
+  const handleSearchByOrder = async () => {
+    if (!searchByTracking && !searchByReference) {
+      alert('Please enter Tracking ID or Reference Number to search');
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const token = localStorage.getItem('token');
+      const searchParams = new URLSearchParams();
+      if (searchByTracking) searchParams.append('tracking_id', searchByTracking);
+      if (searchByReference) searchParams.append('reference_number', searchByReference);
+
+      const response = await axios.get(`${API_URL}/invoices/search?${searchParams.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.invoiceIds && response.data.invoiceIds.length > 0) {
+        // Filter invoices to show only matching ones
+        const matchingInvoices = invoices.filter(inv => 
+          response.data.invoiceIds.includes(inv.id)
+        );
+        setSearchResults(matchingInvoices);
+        setSearchOrderDetails(response.data.orderDetails || []);
+        alert(`Found ${matchingInvoices.length} invoice(s) matching your search`);
+      } else {
+        setSearchResults([]);
+        setSearchOrderDetails([]);
+        alert('No invoices found with the given Tracking ID or Reference Number');
+      }
+    } catch (error) {
+      console.error('Error searching invoices:', error);
+      showError(error.response?.data?.error || 'Failed to search invoices');
+      setSearchResults([]);
+      setSearchOrderDetails([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Filter invoices based on seller and search term
-  const filteredInvoices = invoices.filter((invoice) => {
+  const filteredInvoices = (searchResults.length > 0 ? searchResults : invoices).filter((invoice) => {
     // Filter by seller
     if (filterSellerId && String(invoice.seller_id) !== String(filterSellerId)) {
       return false;
@@ -409,15 +455,15 @@ const Invoices = () => {
 
   return (
     <Layout>
-      <div className="space-y-6 p-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">
+      <div className="space-y-3 sm:space-y-4 md:space-y-6 p-2 sm:p-3 md:p-4 lg:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
             {user?.role === 'admin' ? 'Invoices & Billing' : 'My Invoices'}
           </h1>
           {user?.role === 'admin' && (
             <button
               onClick={() => setShowGenerateModal(true)}
-              className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg"
+              className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 transition-colors shadow-lg whitespace-nowrap"
             >
               ➕ Generate Invoice
             </button>
@@ -426,16 +472,16 @@ const Invoices = () => {
 
         {/* Filter Section */}
         {user?.role === 'admin' && (
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Filter by Seller
                 </label>
                 <select
                   value={filterSellerId}
                   onChange={(e) => setFilterSellerId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">All Sellers</option>
                   {sellers.map((seller) => (
@@ -446,7 +492,7 @@ const Invoices = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Search by Invoice Number or Date
                 </label>
                 <input
@@ -454,9 +500,86 @@ const Invoices = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Enter invoice number or date..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+            </div>
+            <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Search by Order Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    Tracking ID
+                  </label>
+                  <input
+                    type="text"
+                    value={searchByTracking}
+                    onChange={(e) => setSearchByTracking(e.target.value)}
+                    placeholder="Enter tracking ID..."
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    Reference Number
+                  </label>
+                  <input
+                    type="text"
+                    value={searchByReference}
+                    onChange={(e) => setSearchByReference(e.target.value)}
+                    placeholder="Enter reference number..."
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSearchByOrder}
+                    disabled={isSearching}
+                    className="w-full px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  >
+                    {isSearching ? '🔍 Searching...' : '🔍 Search Invoice'}
+                  </button>
+                </div>
+              </div>
+              {(searchByTracking || searchByReference) && (
+                <div className="mt-2 sm:mt-3">
+                  {searchOrderDetails.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 sm:p-3 mb-2">
+                      <h4 className="text-xs sm:text-sm font-semibold text-blue-900 mb-1 sm:mb-2">Order Details Found:</h4>
+                      {searchOrderDetails.map((order, index) => (
+                        <div key={index} className="text-xs sm:text-sm text-blue-800 mb-1">
+                          {searchByTracking && (
+                            <div className="break-words">
+                              <span className="font-semibold">Tracking ID:</span> {order.tracking_id || 'N/A'} → 
+                              <span className="font-semibold ml-1 sm:ml-2">Reference:</span> {order.reference_number || 'N/A'}
+                            </div>
+                          )}
+                          {searchByReference && (
+                            <div className="break-words">
+                              <span className="font-semibold">Reference:</span> {order.reference_number || 'N/A'} → 
+                              <span className="font-semibold ml-1 sm:ml-2">Tracking ID:</span> {order.tracking_id || 'N/A'}
+                            </div>
+                          )}
+                          <div className="text-[10px] sm:text-xs text-blue-600 mt-1">
+                            <span className="font-semibold">Seller:</span> {order.seller_name}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSearchByTracking('');
+                      setSearchByReference('');
+                      setSearchResults([]);
+                      setSearchOrderDetails([]);
+                    }}
+                    className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800"
+                  >
+                    Clear Search
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -471,30 +594,30 @@ const Invoices = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Bill Number
                     </th>
                     {user?.role === 'admin' && (
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Seller
                       </th>
                     )}
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Orders
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Delivered
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Returns
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Payment Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -502,51 +625,51 @@ const Invoices = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={user?.role === 'admin' ? 8 : 7} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={user?.role === 'admin' ? 8 : 7} className="px-3 sm:px-6 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-500">
                         No invoices found
                       </td>
                     </tr>
                   ) : (
                     filteredInvoices.map((invoice) => (
                       <tr key={invoice.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
                           {invoice.bill_number}
                         </td>
                         {user?.role === 'admin' && (
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                             {resolveSellerName(invoice)}
                           </td>
                         )}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                           {new Date(invoice.invoice_date).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                           {invoice.total_orders}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-green-600 font-semibold">
                           {invoice.delivered_orders}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-red-600 font-semibold">
                           {invoice.return_orders}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
                           {invoice.is_paid ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-semibold flex items-center">
-                              <span className="text-lg mr-1">✓</span> Paid
+                            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-[10px] sm:text-xs font-semibold flex items-center">
+                              <span className="text-sm sm:text-base md:text-lg mr-1">✓</span> Paid
                             </span>
                           ) : (
-                            <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full font-semibold">
+                            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-yellow-100 text-yellow-800 rounded-full text-[10px] sm:text-xs font-semibold">
                               Unpaid
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium space-x-1 sm:space-x-2">
                           {user?.role === 'admin' && (
                             <>
                               {!invoice.is_paid && (
                                 <button
                                   onClick={() => handleShowPaidModal(invoice)}
-                                  className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-semibold"
+                                  className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-green-600 text-white rounded hover:bg-green-700 text-[10px] sm:text-xs font-semibold"
                                   title="Mark as Paid & View Orders"
                                 >
                                   💰 Paid
@@ -556,14 +679,14 @@ const Invoices = () => {
                           )}
                           <button
                             onClick={() => handleDownloadPDF(invoice.id)}
-                            className="text-green-600 hover:text-green-900"
+                            className="text-green-600 hover:text-green-900 text-xs sm:text-sm"
                             title="Download PDF"
                           >
                             📄 PDF
                           </button>
                           <button
                             onClick={() => handleDownloadXLS(invoice.id)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-blue-600 hover:text-blue-900 text-xs sm:text-sm"
                             title="Download Excel"
                           >
                             📊 XLS
@@ -572,7 +695,7 @@ const Invoices = () => {
                             <>
                               <button
                                 onClick={() => sendWhatsAppReminder(invoice)}
-                                className="text-green-500 hover:text-green-700"
+                                className="text-green-500 hover:text-green-700 text-xs sm:text-sm"
                                 title="Send WhatsApp"
                               >
                                 💬
@@ -580,7 +703,7 @@ const Invoices = () => {
                               {!invoice.is_paid && (
                                 <button
                                   onClick={() => handleDeleteInvoice(invoice.id, invoice.bill_number)}
-                                  className="text-red-600 hover:text-red-900"
+                                  className="text-red-600 hover:text-red-900 text-xs sm:text-sm"
                                   title="Delete Invoice (Requires Confirmation)"
                                 >
                                   🗑️
@@ -757,6 +880,8 @@ const Invoices = () => {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Products</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Seller Price</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Shipper Price</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Delivery Charge</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Profit</th>
                         </tr>
                       </thead>
@@ -781,15 +906,23 @@ const Invoices = () => {
                             displayProfit = 0;
                           }
                         
-                        // Ensure products are comma-separated
-                        const products = (order.product_codes || '').split(',').map(p => p.trim()).join(', ');
+                        // Count products (comma-separated)
+                        const productCodesArray = (order.product_codes || '').split(',').map(p => p.trim()).filter(p => p.length > 0);
+                        const productCount = productCodesArray.length;
+                        const products = productCodesArray.join(', ');
+                        
+                        // Display delivery charge
+                        const displayDeliveryCharge = parseFloat(order.delivery_charge || 0);
+                        const displayShipperPrice = parseFloat(order.shipper_price || 0);
                         
                         return (
                           <tr key={order.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{order.seller_reference_number}</td>
                             <td className="px-4 py-3 text-sm font-semibold text-blue-600 whitespace-nowrap">{order.tracking_id || '-'}</td>
                             <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{order.customer_name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{products}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                              {products} {productCount > 0 && <span className="text-xs text-gray-400">({productCount})</span>}
+                            </td>
                             <td className="px-4 py-3 text-sm whitespace-nowrap">
                               <span className={`px-2 py-1 rounded text-xs ${
                                 order.status === 'delivered' ? 'bg-green-100 text-green-800' :
@@ -801,6 +934,14 @@ const Invoices = () => {
                             </td>
                             <td className="px-4 py-3 text-sm font-semibold text-green-700 whitespace-nowrap">
                               {displaySellerPrice > 0 ? formatCurrency(displaySellerPrice) : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-semibold text-blue-700 whitespace-nowrap">
+                              {displayShipperPrice > 0 ? formatCurrency(displayShipperPrice) : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm whitespace-nowrap">
+                              <span className={displayDeliveryCharge < 0 ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+                                {formatCurrency(displayDeliveryCharge)}
+                              </span>
                             </td>
                             <td className="px-4 py-3 text-sm whitespace-nowrap">
                               <span className={displayProfit >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
@@ -817,6 +958,17 @@ const Invoices = () => {
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-green-700 whitespace-nowrap">
                           {formatCurrency(invoiceOrders.reduce((sum, o) => sum + parseFloat(o.seller_price || 0), 0))}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-blue-700 whitespace-nowrap">
+                          {formatCurrency(invoiceOrders.reduce((sum, o) => sum + parseFloat(o.shipper_price || 0), 0))}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold whitespace-nowrap">
+                          <span className={(() => {
+                            const totalDC = invoiceOrders.reduce((sum, o) => sum + parseFloat(o.delivery_charge || 0), 0);
+                            return totalDC < 0 ? 'text-red-600' : 'text-gray-600';
+                          })()}>
+                            {formatCurrency(invoiceOrders.reduce((sum, o) => sum + parseFloat(o.delivery_charge || 0), 0))}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm font-bold whitespace-nowrap">
                           <span className={(() => {
@@ -893,9 +1045,43 @@ const Invoices = () => {
                     <span>Other Expenses:</span>
                     <span className="font-semibold text-red-600">-{formatCurrency(selectedInvoice.other_expenses)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-2 mt-2">
-                    <span className="text-lg font-bold">Net Profit:</span>
-                    <span className={`text-lg font-bold ${(() => {
+                  {/* Delivered vs Returned Ratio Graph */}
+                  {((selectedInvoice.delivered_orders || 0) + (selectedInvoice.return_orders || 0)) > 0 && (
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="font-semibold mb-4 text-center">Order Status Distribution</h4>
+                      <div className="flex items-center justify-center" style={{ minHeight: '300px' }}>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Delivered', value: selectedInvoice.delivered_orders || 0 },
+                                { name: 'Returned', value: selectedInvoice.return_orders || 0 }
+                              ]}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, value, percent }) => {
+                                if (value === 0) return '';
+                                return `${name}: ${value} (${(percent * 100).toFixed(1)}%)`;
+                              }}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              <Cell key="delivered" fill="#10b981" />
+                              <Cell key="returned" fill="#ef4444" />
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between border-t-4 border-indigo-600 pt-4 mt-4">
+                    <span className="text-2xl font-bold">Net Profit:</span>
+                    <span className={`text-3xl font-bold ${(() => {
                       // Calculate from TOTAL row profit - tax - expenses
                       const totalProfit = invoiceOrders.reduce((sum, o) => {
                         const statusLower = String(o.status || '').toLowerCase();

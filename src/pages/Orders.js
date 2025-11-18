@@ -488,22 +488,22 @@ Thank you for your order!`;
 
   return (
     <Layout>
-      <div className="space-y-6 p-6">
-        <h1 className="text-3xl font-bold text-gray-900">Orders Management</h1>
+      <div className="space-y-3 sm:space-y-4 md:space-y-6 p-2 sm:p-3 md:p-4 lg:p-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Orders Management</h1>
 
         {/* Header Actions */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex flex-wrap gap-4 items-center">
+        <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4 items-stretch sm:items-center justify-between">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 md:gap-4 items-stretch sm:items-center flex-1">
               <input
                 type="text"
                 placeholder="Search by tracking ID or seller reference number"
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent flex-1 min-w-0"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               <select
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -515,7 +515,7 @@ Thank you for your order!`;
               </select>
               {user?.role === 'admin' && (
                 <select
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   value={sellerFilter}
                   onChange={(e) => setSellerFilter(e.target.value)}
                 >
@@ -528,7 +528,7 @@ Thank you for your order!`;
                 </select>
               )}
               <select
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 value={paidFilter}
                 onChange={(e) => setPaidFilter(e.target.value)}
               >
@@ -536,7 +536,7 @@ Thank you for your order!`;
                 <option value="true">Paid</option>
                 <option value="false">Unpaid</option>
               </select>
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label className="flex items-center space-x-1 sm:space-x-2 cursor-pointer whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={todayOnly}
@@ -546,14 +546,14 @@ Thank you for your order!`;
                   }}
                   className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span className="text-sm text-gray-700">Today's Orders Only</span>
+                <span className="text-xs sm:text-sm text-gray-700">Today's Orders Only</span>
               </label>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {(user?.role === 'seller' || user?.role === 'admin') && (
                 <button
                   onClick={() => setShowAddOrderModal(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
                 >
                   ➕ Add Order
                 </button>
@@ -586,13 +586,13 @@ Thank you for your order!`;
                         alert('Failed to download template. Please try again.');
                       }
                     }}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
                   >
                     📥 Download Template
                   </button>
                   <button
                     onClick={() => setShowUploadModal(true)}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap"
                   >
                     📤 Upload Orders
                   </button>
@@ -601,14 +601,14 @@ Thank you for your order!`;
               {user?.role === 'admin' && (
                 <button
                   onClick={() => setShowReturnScan(true)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
                 >
                   📦 Return Scan
                 </button>
               )}
               <button
                 onClick={downloadOrders}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
               >
                 ⬇️ Download
               </button>
@@ -619,7 +619,7 @@ Thank you for your order!`;
                     fetchKPIData();
                   }
                 }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-purple-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap"
               >
                 {showKPIs ? '📊 Hide KPIs' : '📊 Show KPIs'}
               </button>
@@ -631,26 +631,26 @@ Thank you for your order!`;
         {showKPIs && kpiData && (
           <div className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
-                <div className="text-sm text-gray-600">Total Orders</div>
-                <div className="text-2xl font-bold text-gray-900">{kpiData.summary?.total_orders || 0}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+              <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4 border-l-4 border-blue-500">
+                <div className="text-xs sm:text-sm text-gray-600">Total Orders</div>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{kpiData.summary?.total_orders || 0}</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-                <div className="text-sm text-gray-600">Delivered</div>
-                <div className="text-2xl font-bold text-green-600">{kpiData.summary?.delivered || 0}</div>
+              <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4 border-l-4 border-green-500">
+                <div className="text-xs sm:text-sm text-gray-600">Delivered</div>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-green-600">{kpiData.summary?.delivered || 0}</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
-                <div className="text-sm text-gray-600">Returned</div>
-                <div className="text-2xl font-bold text-red-600">{kpiData.summary?.returned || 0}</div>
+              <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4 border-l-4 border-red-500">
+                <div className="text-xs sm:text-sm text-gray-600">Returned</div>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">{kpiData.summary?.returned || 0}</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
-                <div className="text-sm text-gray-600">Pending</div>
-                <div className="text-2xl font-bold text-yellow-600">{kpiData.summary?.pending || 0}</div>
+              <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4 border-l-4 border-yellow-500">
+                <div className="text-xs sm:text-sm text-gray-600">Pending</div>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-600">{kpiData.summary?.pending || 0}</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
-                <div className="text-sm text-gray-600">Return Ratio</div>
-                <div className="text-2xl font-bold text-purple-600">{kpiData.return_ratio || 0}%</div>
+              <div className="bg-white rounded-lg shadow p-2 sm:p-3 md:p-4 border-l-4 border-purple-500">
+                <div className="text-xs sm:text-sm text-gray-600">Return Ratio</div>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-purple-600">{kpiData.return_ratio || 0}%</div>
               </div>
             </div>
 
@@ -1047,30 +1047,6 @@ Thank you for your order!`;
               <h3 className="text-lg font-semibold mb-4">Bulk Upload Orders (CSV/Excel)</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Upload Excel file with columns: <strong>Ref #</strong> (optional), <strong>Customer</strong>, <strong>Phone</strong>, <strong>Address</strong>, <strong>City</strong>, <strong>Courier</strong>, <strong>Products</strong>, <strong>Seller Price</strong>, <strong>Shipper Price</strong>, <strong>DC</strong>
-              </p>
-              <p className="text-xs text-blue-600 mb-2 bg-blue-50 p-2 rounded">
-                ✅ <strong>Automatic:</strong> Seller (from selection), Profit (calculated), Tracking ID (empty), Status (pending), Paid (false)
-              </p>
-              <p className="text-xs text-red-600 mb-2 bg-red-50 p-2 rounded font-semibold">
-                ⚠️ <strong>Required in Excel:</strong> Customer, Phone, Address, City, Products, Seller Price, Shipper Price, DC
-              </p>
-              <p className="text-xs text-green-600 mb-2 bg-green-50 p-2 rounded">
-                💡 <strong>Optional in Excel:</strong> Ref # (auto-generated if empty), Courier
-              </p>
-              <p className="text-xs text-orange-600 mb-2 bg-orange-50 p-2 rounded">
-                📝 <strong>Manual Entry Only:</strong> Shipper Price must be manually entered in Excel. It is NOT auto-calculated from products.
-              </p>
-              <p className="text-xs text-blue-600 mb-2 bg-blue-50 p-2 rounded">
-                💡 Product Codes format: 
-                <br />- "KS1,KS2" = 2 products (KS1 and KS2)
-                <br />- "KS1,KS1,KS3" = 3 products (KS1 appears twice, KS3 once)
-                <br />- Products are entered as-is, no automatic calculations
-              </p>
-              <p className="text-xs text-green-600 mb-2 bg-green-50 p-2 rounded">
-                ✅ Download the template first to see the correct format with examples
-              </p>
-              <p className="text-xs text-blue-600 mb-4 bg-blue-50 p-2 rounded">
-                💡 Tip: Large files (10,000+ orders) are supported and will be processed in batches. Please wait for completion.
               </p>
               <form onSubmit={handleFileUpload}>
                 {user?.role === 'admin' && (

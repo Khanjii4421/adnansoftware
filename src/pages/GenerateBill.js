@@ -8,9 +8,9 @@ import { API_URL } from '../utils/api';
 // Brand Information
 const BRAND_INFO = {
   name: 'Adnan Khaddar House',
-  address: 'Kamalia, Pakistan',
-  phone: '+92 300 1234567', // Update with your actual phone number
-  whatsapp: '923001234567' // Update with your actual WhatsApp number (without +)
+  address: 'Iqbal bazar,Kamalia, Pakistan',
+  phone: '+92 301 7323200', // Update with your actual phone number
+  whatsapp: '923017323200' // Update with your actual WhatsApp number (without +)
 };
 
 const GenerateBill = () => {

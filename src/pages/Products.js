@@ -255,25 +255,25 @@ const Products = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Products</h2>
-          <div className="flex gap-2">
+      <div className="space-y-3 sm:space-y-4 md:space-y-6 p-2 sm:p-3 md:p-4 lg:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+          <h2 className="text-xl sm:text-2xl font-bold">Products</h2>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={downloadTemplate}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-green-700 whitespace-nowrap"
             >
               📥 Download Template
             </button>
             <button
               onClick={() => setShowUploadModal(true)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 whitespace-nowrap"
             >
               📤 Bulk Upload
             </button>
             <button
               onClick={openAddModal}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 whitespace-nowrap"
             >
               Add Product
             </button>
@@ -284,24 +284,24 @@ const Products = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                   Product Code
                 </th>
                 {user?.role === 'admin' && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                     Seller
                   </th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                   Seller Price
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                   Shipper Price
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                   Meters
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">
                   Actions
                 </th>
               </tr>
@@ -309,22 +309,22 @@ const Products = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {products.map((product) => (
                 <tr key={product.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">
                     {product.product_code}
                   </td>
                   {user?.role === 'admin' && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                       {resolveSellerName(product.seller_id)}
                     </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                     Rs. {parseFloat(product.seller_price || 0).toFixed(2)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                     Rs. {parseFloat(product.shipper_price || 0).toFixed(2)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                  <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
+                    <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
                       product.meters === 7 
                         ? 'bg-blue-100 text-blue-800' 
                         : 'bg-purple-100 text-purple-800'
@@ -332,7 +332,7 @@ const Products = () => {
                       {product.meters || 7}m
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
+                  <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium space-x-1 sm:space-x-2 md:space-x-3">
                     <button
                       onClick={() => openEditModal(product)}
                       className="text-indigo-600 hover:text-indigo-900"
@@ -355,19 +355,19 @@ const Products = () => {
 
         {/* Add Product Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-lg font-semibold mb-4">{isEdit ? 'Edit Product' : 'Add Product'}</h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">{isEdit ? 'Edit Product' : 'Add Product'}</h3>
               <form onSubmit={handleSubmit}>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700">
                       Product Code
                     </label>
                     <input
                       type="text"
                       required
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="mt-1 block w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md"
                       value={formData.product_code}
                       onChange={(e) =>
                         setFormData({ ...formData, product_code: e.target.value })
@@ -376,10 +376,10 @@ const Products = () => {
                   </div>
                   {user?.role === 'admin' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Seller</label>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700">Seller</label>
                       <select
                         required
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="mt-1 block w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md"
                         value={formData.seller_id}
                         onChange={(e) =>
                           setFormData({ ...formData, seller_id: e.target.value })
@@ -396,14 +396,14 @@ const Products = () => {
                     </div>
                   )}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700">
                       Seller Price
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       required
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="mt-1 block w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md"
                       value={formData.seller_price}
                       onChange={(e) =>
                         setFormData({ ...formData, seller_price: e.target.value })
@@ -411,14 +411,14 @@ const Products = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700">
                       Shipper Price
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       required
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="mt-1 block w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md"
                       value={formData.shipper_price}
                       onChange={(e) =>
                         setFormData({ ...formData, shipper_price: e.target.value })
@@ -426,12 +426,12 @@ const Products = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700">
                       Meters
                     </label>
                     <select
                       required
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      className="mt-1 block w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md"
                       value={formData.meters}
                       onChange={(e) =>
                         setFormData({ ...formData, meters: parseInt(e.target.value) })
@@ -442,11 +442,11 @@ const Products = () => {
                     </select>
                   </div>
                 </div>
-                <div className="mt-6 flex justify-end space-x-2">
+                <div className="mt-4 sm:mt-6 flex justify-end space-x-2">
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 border rounded-lg"
+                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base border rounded-lg"
                   >
                     Cancel
                   </button>

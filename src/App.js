@@ -21,6 +21,7 @@ import InvoiceMatch from './pages/InvoiceMatch';
 import Suppliers from './pages/Suppliers';
 import PurchaseEntry from './pages/PurchaseEntry';
 import PurchaseDashboard from './pages/PurchaseDashboard';
+import ExpensesTracker from './pages/ExpensesTracker';
 import './App.css';
 
 function App() {
@@ -183,6 +184,14 @@ function App() {
             element={
               <PrivateRoute>
                 <PurchaseDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/expenses-tracker"
+            element={
+              <PrivateRoute>
+                <ExpensesTracker />
               </PrivateRoute>
             }
           />

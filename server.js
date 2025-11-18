@@ -546,14 +546,22 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       if (ordersError) {
         console.error('Error fetching orders for financial calculations:', ordersError);
       } else if (allOrders && allOrders.length > 0) {
-        // Calculate total sale (sum of all seller_price)
+        // Calculate total sale (sum of seller_price from DELIVERED orders only)
         totalSale = allOrders.reduce((sum, order) => {
-          return sum + parseFloat(order.seller_price || 0);
+          const statusLower = String(order.status || '').toLowerCase().trim();
+          if (statusLower === 'delivered') {
+            return sum + parseFloat(order.seller_price || 0);
+          }
+          return sum;
         }, 0);
 
-        // Calculate total shipper price (sum of all shipper_price)
+        // Calculate total shipper price (sum of shipper_price from DELIVERED orders only)
         totalShipperPrice = allOrders.reduce((sum, order) => {
-          return sum + parseFloat(order.shipper_price || 0);
+          const statusLower = String(order.status || '').toLowerCase().trim();
+          if (statusLower === 'delivered') {
+            return sum + parseFloat(order.shipper_price || 0);
+          }
+          return sum;
         }, 0);
 
         // Get order status counts
@@ -865,18 +873,8 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid product codes' });
     }
 
-    // Check inventory availability (optional check - you can make it mandatory)
+    // Orders are independent of inventory - no inventory check required
     const orderQty = parseInt(qty) || 1;
-    const inventoryCheck = await checkInventoryAvailability(finalSellerId, productCodesArray, orderQty);
-    
-    // If inventory check fails, return error with details
-    if (!inventoryCheck.available) {
-      return res.status(400).json({ 
-        error: 'Insufficient inventory',
-        unavailable_products: inventoryCheck.unavailable,
-        inventory_details: inventoryCheck.details
-      });
-    }
 
     // Calculate profit
     const sellerPriceNum = parseFloat(seller_price || 0);
@@ -924,17 +922,12 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
     console.log('[POST /api/orders] Order created successfully:', {
       id: order.id,
       seller_id: order.seller_id,
-      seller_reference_number: order.seller_reference_number,
-      inventory_available: inventoryCheck.available
+      seller_reference_number: order.seller_reference_number
     });
 
     res.json({ 
       order, 
-      message: 'Order created successfully',
-      inventory_check: {
-        available: inventoryCheck.available,
-        details: inventoryCheck.details
-      }
+      message: 'Order created successfully'
     });
   } catch (error) {
     console.error('Error creating order:', error);
@@ -2328,6 +2321,85 @@ app.post('/api/invoices/match', authenticateToken, async (req, res) => {
   }
 });
 
+// Search invoices by tracking ID or reference number
+app.get('/api/invoices/search', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { tracking_id, reference_number } = req.query;
+
+    if (!tracking_id && !reference_number) {
+      return res.status(400).json({ error: 'Please provide tracking_id or reference_number' });
+    }
+
+    // Build query to find orders matching the search criteria
+    let ordersQuery = supabase
+      .from('orders')
+      .select('id, seller_reference_number, tracking_id, seller_id');
+
+    if (tracking_id) {
+      ordersQuery = ordersQuery.ilike('tracking_id', `%${tracking_id}%`);
+    }
+
+    if (reference_number) {
+      ordersQuery = ordersQuery.ilike('seller_reference_number', `%${reference_number}%`);
+    }
+
+    const { data: matchingOrders, error: ordersError } = await ordersQuery;
+
+    if (ordersError) throw ordersError;
+
+    if (!matchingOrders || matchingOrders.length === 0) {
+      return res.json({ invoiceIds: [], orderDetails: [] });
+    }
+
+    const orderIds = matchingOrders.map(o => o.id);
+
+    // Get seller names for these orders
+    const sellerIds = [...new Set(matchingOrders.map(o => o.seller_id).filter(Boolean))];
+    let sellersMap = {};
+    if (sellerIds.length > 0) {
+      const { data: sellers } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', sellerIds);
+      
+      if (sellers) {
+        sellersMap = sellers.reduce((acc, seller) => {
+          acc[seller.id] = seller.name;
+          return acc;
+        }, {});
+      }
+    }
+
+    // Prepare order details with seller names
+    const orderDetails = matchingOrders.map(order => ({
+      order_id: order.id,
+      reference_number: order.seller_reference_number,
+      tracking_id: order.tracking_id,
+      seller_name: sellersMap[order.seller_id] || 'Unknown'
+    }));
+
+    // Find invoices that contain these orders
+    const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
+      .from('invoice_orders')
+      .select('invoice_id')
+      .in('order_id', orderIds);
+
+    if (invoiceOrdersError) throw invoiceOrdersError;
+
+    // Get unique invoice IDs
+    const invoiceIds = [...new Set((invoiceOrders || []).map(io => io.invoice_id))];
+
+    res.json({ invoiceIds, orderDetails });
+  } catch (error) {
+    console.error('Error searching invoices:', error);
+    res.status(500).json({ error: 'Failed to search invoices' });
+  }
+});
+
 // Get invoice details
 app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
@@ -2346,12 +2418,27 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
 
     if (invoiceError) throw invoiceError;
 
-    // Get seller name
+    // Get seller info
     const { data: seller } = await supabase
       .from('users')
-      .select('name')
+      .select('id, name, email')
       .eq('id', invoice.seller_id)
       .single();
+
+    // Check if it's Affan seller
+    const isAffanSeller = seller && (
+      (seller.name && seller.name.toLowerCase().includes('affan')) ||
+      (seller.email && seller.email.toLowerCase().includes('affan'))
+    );
+
+    // Affan seller DC calculation function based on product count
+    const calculateAffanDC = (productCount) => {
+      if (productCount <= 2) return -200;      // 1-2 products
+      if (productCount <= 5) return -350;      // 3-5 products
+      if (productCount <= 11) return -550;     // 6-11 products
+      if (productCount <= 19) return -850;     // 12-19 products
+      return -1000;                            // 20+ products
+    };
 
     // Get orders for this invoice using invoice_orders junction table
     const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
@@ -2372,7 +2459,32 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
-      orders = ordersData || [];
+      
+      // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
+      // Delivered orders keep original DC and profit
+      if (isAffanSeller && ordersData) {
+        orders = ordersData.map(order => {
+          const statusLower = String(order.status || '').toLowerCase().trim();
+          const isReturned = statusLower === 'returned' || statusLower === 'return';
+          
+          // Only recalculate DC for returned orders
+          if (isReturned) {
+            const productCodesArray = parseProductCodes(order.product_codes || '');
+            const productCount = productCodesArray.length;
+            const calculatedDC = calculateAffanDC(productCount);
+            
+            return {
+              ...order,
+              delivery_charge: calculatedDC // Update DC to calculated value for returns only
+            };
+          } else {
+            // Delivered orders: keep original DC and profit
+            return order;
+          }
+        });
+      } else {
+        orders = ordersData || [];
+      }
     }
 
     res.json({
@@ -2516,12 +2628,36 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Get seller name
+    // Get seller info
     const { data: seller } = await supabase
       .from('users')
-      .select('name, email')
+      .select('id, name, email')
       .eq('id', invoice.seller_id)
       .single();
+
+    // Check if it's Affan seller
+    const isAffanSeller = seller && (
+      (seller.name && seller.name.toLowerCase().includes('affan')) ||
+      (seller.email && seller.email.toLowerCase().includes('affan'))
+    );
+
+    // Affan seller DC calculation function based on product count
+    const calculateAffanDC = (productCount) => {
+      if (productCount <= 2) return -200;      // 1-2 products
+      if (productCount <= 5) return -350;      // 3-5 products
+      if (productCount <= 11) return -550;     // 6-11 products
+      if (productCount <= 19) return -850;     // 12-19 products
+      return -1000;                            // 20+ products
+    };
+
+    // Helper function to parse product codes
+    const parseProductCodes = (productCodes) => {
+      if (!productCodes) return [];
+      return productCodes
+        .split(',')
+        .map(code => code.trim().toUpperCase())
+        .filter(code => code.length > 0);
+    };
 
     // Get orders for this invoice using invoice_orders junction table
     const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
@@ -2542,7 +2678,32 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
-      orders = ordersData || [];
+      
+      // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
+      // Delivered orders keep original DC and profit
+      if (isAffanSeller && ordersData) {
+        orders = ordersData.map(order => {
+          const statusLower = String(order.status || '').toLowerCase().trim();
+          const isReturned = statusLower === 'returned' || statusLower === 'return';
+          
+          // Only recalculate DC for returned orders
+          if (isReturned) {
+            const productCodesArray = parseProductCodes(order.product_codes || '');
+            const productCount = productCodesArray.length;
+            const calculatedDC = calculateAffanDC(productCount);
+            
+            return {
+              ...order,
+              delivery_charge: calculatedDC // Update DC to calculated value for returns only
+            };
+          } else {
+            // Delivered orders: keep original DC and profit
+            return order;
+          }
+        });
+      } else {
+        orders = ordersData || [];
+      }
     }
 
     const invoiceDate = invoice.invoice_date || invoice.created_at;
@@ -2562,7 +2723,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     .header h1 { color: #4F46E5; font-size: 32px; margin-bottom: 10px; }
     .invoice-info { display: flex; justify-content: space-between; margin-bottom: 30px; }
     .info-section { flex: 1; }
-    .info-section h3 { color: #4F46E5; margin-bottom: 10px; font-size: 18px; }
+    .info-section h3 { color:rgb(27, 216, 52); margin-bottom: 10px; font-size: 18px; }
     .info-section p { margin: 5px 0; color: #333; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th { background: #4F46E5; color: white; padding: 12px; text-align: left; font-weight: bold; }
@@ -2653,16 +2814,21 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
           const profitColor = displayProfit >= 0 ? '#10B981' : '#EF4444';
           const profitSign = displayProfit >= 0 ? '' : '-';
           
+          // Count products (comma-separated)
+          const productCodesArray = parseProductCodes(order.product_codes || '');
+          const productCount = productCodesArray.length;
+          const products = productCodesArray.join(', ');
+          
           return `
           <tr>
             <td>${order.seller_reference_number || '-'}</td>
             <td>${order.tracking_id || '-'}</td>
             <td>${order.customer_name || '-'}</td>
-            <td>${order.product_codes || '-'}</td>
+            <td>${products} ${productCount > 0 ? `(${productCount})` : ''}</td>
             <td>${(order.status || '').toUpperCase()}</td>
             <td>Rs. ${parseFloat(order.seller_price || 0).toFixed(2)}</td>
             <td>Rs. ${parseFloat(order.shipper_price || 0).toFixed(2)}</td>
-            <td>Rs. ${parseFloat(order.delivery_charge || 0).toFixed(2)}</td>
+            <td style="color: ${parseFloat(order.delivery_charge || 0) < 0 ? '#EF4444' : '#333'}; font-weight: ${parseFloat(order.delivery_charge || 0) < 0 ? 'bold' : 'normal'};">Rs. ${parseFloat(order.delivery_charge || 0).toFixed(2)}</td>
             <td style="color: ${profitColor}; font-weight: bold;">${profitSign}Rs. ${Math.abs(displayProfit).toFixed(2)}</td>
           </tr>
         `;
@@ -2670,6 +2836,68 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
       </tbody>
     </table>
     ` : '<p>No orders found for this invoice.</p>'}
+
+    ${(() => {
+      const deliveredCount = invoice.delivered_orders || 0;
+      const returnedCount = invoice.return_orders || 0;
+      const totalCount = deliveredCount + returnedCount;
+      
+      if (totalCount === 0) return '';
+      
+      // Calculate percentages
+      const deliveredPercent = (deliveredCount / totalCount) * 100;
+      const returnedPercent = (returnedCount / totalCount) * 100;
+      
+      // SVG Pie Chart (Smaller size)
+      const radius = 60;
+      const centerX = 80;
+      const centerY = 80;
+      const circumference = 2 * Math.PI * radius;
+      
+      const deliveredOffset = circumference - (deliveredPercent / 100) * circumference;
+      const returnedOffset = circumference - (returnedPercent / 100) * circumference;
+      
+      return `
+      <div style="margin-top: 30px; padding: 15px; border: 2px solid #4F46E5; border-radius: 8px; background: #f9f9f9;">
+        <h3 style="color: #4F46E5; margin-bottom: 15px; text-align: center; font-size: 16px;">Order Status Distribution</h3>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 30px;">
+          <div>
+            <svg width="160" height="160" viewBox="0 0 160 160">
+              <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="#e0e0e0" stroke-width="20"/>
+              ${deliveredCount > 0 ? `
+              <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="#10B981" stroke-width="20"
+                stroke-dasharray="${circumference}" stroke-dashoffset="${deliveredOffset}"
+                transform="rotate(-90 ${centerX} ${centerY})" />
+              ` : ''}
+              ${returnedCount > 0 ? `
+              <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="#EF4444" stroke-width="20"
+                stroke-dasharray="${circumference}" stroke-dashoffset="${returnedOffset}"
+                transform="rotate(${-90 + (deliveredPercent / 100) * 360} ${centerX} ${centerY})" />
+              ` : ''}
+              <text x="${centerX}" y="${centerY - 8}" text-anchor="middle" font-size="18" font-weight="bold" fill="#4F46E5">${totalCount}</text>
+              <text x="${centerX}" y="${centerY + 12}" text-anchor="middle" font-size="12" fill="#666">Total Orders</text>
+            </svg>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 30px; height: 30px; background: #10B981; border-radius: 4px;"></div>
+              <div>
+                <div style="font-weight: bold; color: #10B981;">Delivered: ${deliveredCount}</div>
+                <div style="font-size: 14px; color: #666;">${deliveredPercent.toFixed(1)}%</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 30px; height: 30px; background: #EF4444; border-radius: 4px;"></div>
+              <div>
+                <div style="font-weight: bold; color: #EF4444;">Returned: ${returnedCount}</div>
+                <div style="font-size: 14px; color: #666;">${returnedPercent.toFixed(1)}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      `;
+    })()}
 
     <div class="summary">
       <div class="summary-row">
@@ -2909,6 +3137,28 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
 
     console.log('[POST /api/invoices/generate] Found unpaid orders:', unpaidOrders.length);
 
+    // Get seller info to check if it's Affan
+    const { data: sellerInfo } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .eq('id', seller_id)
+      .single();
+    
+    const isAffanSeller = sellerInfo && (
+      (sellerInfo.name && sellerInfo.name.toLowerCase().includes('affan')) ||
+      (sellerInfo.email && sellerInfo.email.toLowerCase().includes('affan'))
+    );
+
+    // Affan seller DC calculation function based on product count
+    // Formula: 1=-200, 2=-200, 3=-350, 6=-550, 12=-850, 20=-1000
+    const calculateAffanDC = (productCount) => {
+      if (productCount <= 2) return -200;      // 1-2 products
+      if (productCount <= 5) return -350;      // 3-5 products
+      if (productCount <= 11) return -550;     // 6-11 products
+      if (productCount <= 19) return -850;     // 12-19 products
+      return -1000;                            // 20+ products
+    };
+
     // Calculate totals
     let totalProfit = 0;
     let totalSellerPrice = 0;
@@ -2929,7 +3179,19 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
       // Accumulate totals
       totalSellerPrice += parseFloat(order.seller_price || 0);
       totalShipperPrice += parseFloat(order.shipper_price || 0);
-      // Note: totalDeliveryCharge will be handled inside the profit calculation based on order status
+      
+      // For Affan seller: Calculate DC based on product count (ONLY for returned orders)
+      // Delivered orders keep original DC, only return orders get calculated DC
+      let orderDeliveryCharge = parseFloat(order.delivery_charge || 0);
+      if (isAffanSeller && isReturned) {
+        // Count products in order
+        const productCodesArray = parseProductCodes(order.product_codes || '');
+        const productCount = productCodesArray.length;
+        // Calculate DC based on product count (only for returns)
+        const calculatedDC = calculateAffanDC(productCount);
+        orderDeliveryCharge = calculatedDC;
+        console.log(`[Invoice Generate] Affan seller - RETURN Order ${order.seller_reference_number}: ${productCount} products, Original DC: ${order.delivery_charge}, Calculated DC: ${calculatedDC}`);
+      }
       
       // Calculate profit based on order status
       let orderProfit = 0;
@@ -2937,16 +3199,20 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
         // For returned orders: profit displayed is ZERO, but DC (delivery charge) is subtracted from total profit
         // User requirement: "PROFITE ZERO HO JAYA GA OR DC RETURN MINUS MAIN A JAYA GI"
         // Total profit calculation: Delivered Profit - Return DC
+        // IMPORTANT: For Affan seller, use calculated DC (based on product count), not original DC
         orderProfit = 0; // Profit displayed is zero for returned orders
         // Subtract returned DC from total profit (this will be subtracted from delivered profit)
-        totalProfit -= parseFloat(order.delivery_charge || 0); // Subtract DC from total profit
+        // Use the calculated DC (for Affan) or original DC (for others)
+        const dcToSubtract = isAffanSeller ? Math.abs(orderDeliveryCharge) : Math.abs(parseFloat(order.delivery_charge || 0));
+        totalProfit -= dcToSubtract; // Subtract DC from total profit
         // Delivery charge for returned orders is negative (will be subtracted in total)
-        totalDeliveryCharge -= parseFloat(order.delivery_charge || 0); // Subtract DC for returns
+        totalDeliveryCharge -= dcToSubtract; // Subtract DC for returns
       } else {
-        // For delivered orders: use profit from order table (already calculated as seller_price - shipper_price - delivery_charge)
+        // For delivered orders: use original profit from order table (DC remains original)
+        // No recalculation needed for delivered orders
         orderProfit = parseFloat(order.profit || 0);
         totalProfit += orderProfit; // Add delivered profit to total
-        // Add delivery charge normally for delivered orders
+        // Add delivery charge normally for delivered orders (original DC)
         totalDeliveryCharge += parseFloat(order.delivery_charge || 0);
       }
       
@@ -5650,6 +5916,514 @@ function generatePurchaseBillHTML(purchase, supplier, items, billDate, paymentHi
   `;
 }
 
+// ============================================
+// EXPENSES TRACKER ROUTES
+// ============================================
+
+// Get expenses summary (profit, sales, purchases, expenses)
+app.get('/api/expenses/summary', authenticateToken, async (req, res) => {
+  console.log('[API] /api/expenses/summary - Request received');
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Only admin can access
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { timeRange = 'month' } = req.query;
+    
+    // Calculate date range
+    const now = new Date();
+    let startDate = new Date();
+    switch (timeRange) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case '3months':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case '6months':
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(now.getMonth() - 1);
+    }
+
+    // 1. Get Total Admin Profit from Dashboard (delivered orders profit)
+    const { data: deliveredOrders, error: ordersError } = await supabase
+      .from('orders')
+      .select('profit, status')
+      .gte('created_at', startDate.toISOString())
+      .eq('status', 'delivered');
+
+    const totalAdminProfit = !ordersError && deliveredOrders
+      ? deliveredOrders.reduce((sum, order) => sum + parseFloat(order.profit || 0), 0)
+      : 0;
+
+    // 2. Get Total Received from Generate Bill (billing_entries credit where entry_type = 'order')
+    // Group by bill_number to calculate remaining correctly
+    let totalReceived = 0;
+    let remainingBills = 0;
+    try {
+      const { data: billEntries, error: billsError } = await supabase
+        .from('billing_entries')
+        .select('bill_number, order_total, credit')
+        .gte('date', startDate.toISOString())
+        .eq('entry_type', 'order')
+        .not('bill_number', 'is', null);
+
+      if (!billsError && billEntries) {
+        // Group by bill_number
+        const billsMap = {};
+        billEntries.forEach(entry => {
+          const billNum = entry.bill_number;
+          if (!billsMap[billNum]) {
+            billsMap[billNum] = {
+              order_total: 0,
+              credit: 0
+            };
+          }
+          billsMap[billNum].order_total += parseFloat(entry.order_total || 0);
+          billsMap[billNum].credit += parseFloat(entry.credit || 0);
+        });
+
+        // Calculate total received and remaining for each bill
+        Object.values(billsMap).forEach(bill => {
+          totalReceived += bill.credit;
+          const remaining = Math.max(0, bill.order_total - bill.credit);
+          remainingBills += remaining;
+        });
+      }
+    } catch (e) {
+      console.log('billing_entries table not found, skipping bill calculation');
+    }
+
+    // 3. Get Purchase Total Paid and Remaining Purchase
+    let purchaseTotalPaid = 0;
+    let remainingPurchase = 0;
+    try {
+      const { data: purchases, error: purchasesError } = await supabase
+        .from('purchases')
+        .select('debit_amount, paid_amount')
+        .gte('bill_date', startDate.toISOString().split('T')[0]);
+
+      if (!purchasesError && purchases) {
+        purchases.forEach(purchase => {
+          const debitAmount = parseFloat(purchase.debit_amount || 0);
+          const paidAmount = parseFloat(purchase.paid_amount || 0);
+          purchaseTotalPaid += paidAmount;
+          const remaining = Math.max(0, debitAmount - paidAmount);
+          remainingPurchase += remaining;
+        });
+      }
+    } catch (e) {
+      console.log('purchases table not found, skipping purchase calculation');
+    }
+
+    // Calculate Total Profit = Admin Profit + Total Received - Purchase Total Paid
+    const totalProfit = totalAdminProfit + totalReceived - purchaseTotalPaid;
+
+    // Get total sales (delivered orders seller_price) - for display only
+    const { data: salesOrders, error: salesError } = await supabase
+      .from('orders')
+      .select('seller_price, status')
+      .gte('created_at', startDate.toISOString())
+      .eq('status', 'delivered');
+
+    const totalSales = !salesError && salesOrders
+      ? salesOrders.reduce((sum, order) => sum + parseFloat(order.seller_price || 0), 0)
+      : 0;
+
+    // Get total purchases (all purchases debit_amount) - for display only
+    let totalPurchases = 0;
+    try {
+      const { data: allPurchases, error: allPurchasesError } = await supabase
+        .from('purchases')
+        .select('debit_amount')
+        .gte('bill_date', startDate.toISOString().split('T')[0]);
+
+      if (!allPurchasesError && allPurchases) {
+        totalPurchases = allPurchases.reduce((sum, purchase) => sum + parseFloat(purchase.debit_amount || 0), 0);
+      }
+    } catch (e) {
+      console.log('purchases table not found, skipping total purchases calculation');
+    }
+
+    // Get total expenses
+    const { data: expenses, error: expensesError } = await supabase
+      .from('expenses')
+      .select('amount')
+      .gte('expense_date', startDate.toISOString().split('T')[0]);
+
+    if (expensesError) {
+      console.error('Error fetching expenses for summary:', expensesError);
+      // Check if table doesn't exist
+      if (expensesError.code === '42P01' || expensesError.message?.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Expenses table does not exist. Please run expenses-schema.sql in Supabase SQL Editor.',
+          totalProfit,
+          totalSales,
+          totalPurchases,
+          totalExpenses: 0,
+          netProfit: totalProfit
+        });
+      }
+    }
+
+    const totalExpenses = !expensesError && expenses
+      ? expenses.reduce((sum, expense) => sum + parseFloat(expense.amount || 0), 0)
+      : 0;
+
+    // Calculate net profit (Total Profit - All Expenses by Categories)
+    const netProfit = totalProfit - totalExpenses;
+
+    res.json({
+      totalAdminProfit,
+      totalReceived,
+      purchaseTotalPaid,
+      remainingPurchase,
+      remainingBills,
+      totalProfit, // Calculated: Admin Profit + Received - Purchase Paid
+      totalSales,
+      totalPurchases,
+      totalExpenses,
+      netProfit // Final: Total Profit - All Expenses
+    });
+  } catch (error) {
+    console.error('Error fetching expenses summary:', error);
+    res.status(500).json({ error: 'Failed to fetch expenses summary' });
+  }
+});
+
+// Get expenses chart data
+app.get('/api/expenses/chart', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { timeRange = 'month' } = req.query;
+    
+    const now = new Date();
+    let startDate = new Date();
+    let groupBy = 'day';
+    
+    switch (timeRange) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        groupBy = 'day';
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        groupBy = 'day';
+        break;
+      case '3months':
+        startDate.setMonth(now.getMonth() - 3);
+        groupBy = 'week';
+        break;
+      case '6months':
+        startDate.setMonth(now.getMonth() - 6);
+        groupBy = 'week';
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        groupBy = 'month';
+        break;
+    }
+
+    // Get expenses grouped by date
+    const { data: expenses, error: expensesError } = await supabase
+      .from('expenses')
+      .select('expense_date, amount')
+      .gte('expense_date', startDate.toISOString().split('T')[0])
+      .order('expense_date', { ascending: true });
+
+    if (expensesError) {
+      console.error('Error fetching expenses for chart:', expensesError);
+      // Check if table doesn't exist
+      if (expensesError.code === '42P01' || expensesError.message?.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Expenses table does not exist. Please run expenses-schema.sql in Supabase SQL Editor.',
+          chartData: []
+        });
+      }
+    }
+
+    // Get invoices profit grouped by date
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('invoices')
+      .select('invoice_date, net_profit, total_profit')
+      .gte('invoice_date', startDate.toISOString())
+      .order('invoice_date', { ascending: true });
+
+    // Group data by date
+    const chartDataMap = {};
+
+    // Process expenses
+    if (!expensesError && expenses) {
+      expenses.forEach(expense => {
+        const date = new Date(expense.expense_date).toISOString().split('T')[0];
+        if (!chartDataMap[date]) {
+          chartDataMap[date] = { date, profit: 0, expenses: 0, netProfit: 0 };
+        }
+        chartDataMap[date].expenses += parseFloat(expense.amount || 0);
+      });
+    }
+
+    // Process invoices
+    if (!invoicesError && invoices) {
+      invoices.forEach(invoice => {
+        const date = new Date(invoice.invoice_date).toISOString().split('T')[0];
+        if (!chartDataMap[date]) {
+          chartDataMap[date] = { date, profit: 0, expenses: 0, netProfit: 0 };
+        }
+        const profit = parseFloat(invoice.net_profit || invoice.total_profit || 0);
+        chartDataMap[date].profit += profit;
+      });
+    }
+
+    // Calculate net profit and format dates
+    const chartData = Object.values(chartDataMap).map(item => {
+      const netProfit = item.profit - item.expenses;
+      return {
+        date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        profit: item.profit,
+        expenses: item.expenses,
+        netProfit: netProfit
+      };
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.json({ chartData });
+  } catch (error) {
+    console.error('Error fetching chart data:', error);
+    res.status(500).json({ error: 'Failed to fetch chart data' });
+  }
+});
+
+// Get all expenses
+app.get('/api/expenses', authenticateToken, async (req, res) => {
+  console.log('[API] /api/expenses - Request received');
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { timeRange = 'month' } = req.query;
+    
+    const now = new Date();
+    let startDate = new Date();
+    switch (timeRange) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case '3months':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case '6months':
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+
+    const { data: expenses, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .gte('expense_date', startDate.toISOString().split('T')[0])
+      .order('expense_date', { ascending: false });
+
+    if (error) {
+      console.error('Supabase error fetching expenses:', error);
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Expenses table does not exist. Please run expenses-schema.sql in Supabase SQL Editor.' 
+        });
+      }
+      throw error;
+    }
+    res.json({ expenses: expenses || [] });
+  } catch (error) {
+    console.error('Error fetching expenses:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to fetch expenses',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Get expense categories
+app.get('/api/expenses/categories', authenticateToken, async (req, res) => {
+  console.log('[API] /api/expenses/categories - Request received');
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { data: expenses, error } = await supabase
+      .from('expenses')
+      .select('expense_category')
+      .order('expense_category', { ascending: true });
+
+    if (error) {
+      console.error('Supabase error fetching categories:', error);
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Expenses table does not exist. Please run expenses-schema.sql in Supabase SQL Editor.',
+          categories: []
+        });
+      }
+      throw error;
+    }
+
+    // Get unique categories
+    const categories = [...new Set((expenses || []).map(e => e.expense_category).filter(Boolean))];
+    res.json({ categories });
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to fetch categories',
+      categories: []
+    });
+  }
+});
+
+// Create expense
+app.post('/api/expenses', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { expense_name, expense_category, amount, expense_date, description } = req.body;
+
+    if (!expense_name || !expense_category || !amount || !expense_date) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const { data: expense, error } = await supabase
+      .from('expenses')
+      .insert([{
+        expense_name,
+        expense_category,
+        amount: parseFloat(amount),
+        expense_date,
+        description: description || null
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase error creating expense:', error);
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: 'Expenses table does not exist. Please run expenses-schema.sql in Supabase SQL Editor.' 
+        });
+      }
+      throw error;
+    }
+    res.json({ expense });
+  } catch (error) {
+    console.error('Error creating expense:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to create expense',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Update expense
+app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    const { expense_name, expense_category, amount, expense_date, description } = req.body;
+
+    const { data: expense, error } = await supabase
+      .from('expenses')
+      .update({
+        expense_name,
+        expense_category,
+        amount: parseFloat(amount),
+        expense_date,
+        description: description || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ expense });
+  } catch (error) {
+    console.error('Error updating expense:', error);
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// Delete expense
+app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ message: 'Expense deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting expense:', error);
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
+});
+
 // Serve static files from React app in production
 // Check if build directory exists and NODE_ENV is production
 const buildPath = path.join(__dirname, 'build');
@@ -5724,6 +6498,14 @@ app.listen(PORT, HOST, () => {
   console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET_KEY ? '✅ Set' : '⚠️  Using default'}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 Listening on: ${HOST}:${PORT}`);
+  console.log(`\n✅ Expenses Tracker Routes Registered:`);
+  console.log(`   - GET  /api/expenses`);
+  console.log(`   - GET  /api/expenses/summary`);
+  console.log(`   - GET  /api/expenses/chart`);
+  console.log(`   - GET  /api/expenses/categories`);
+  console.log(`   - POST /api/expenses`);
+  console.log(`   - PUT  /api/expenses/:id`);
+  console.log(`   - DELETE /api/expenses/:id\n`);
   if (!isSupabaseConfigured) {
     console.log(`\n⚠️  WARNING: Supabase is not configured!`);
     console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);

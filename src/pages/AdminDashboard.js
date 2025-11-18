@@ -199,24 +199,24 @@ const AdminDashboard = () => {
     <Layout>
       <div className="space-y-4 md:space-y-6 p-2 md:p-0">
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-xl p-6 md:p-8 border-2 border-green-300">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-                <span className="text-4xl">📊</span>
-                Admin Dashboard
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-xl p-3 sm:p-4 md:p-6 lg:p-8 border-2 border-green-300">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-1 sm:mb-2 flex items-center gap-2 sm:gap-3">
+                <span className="text-2xl sm:text-3xl md:text-4xl">📊</span>
+                <span className="truncate">Admin Dashboard</span>
               </h1>
-              <p className="text-base text-gray-700 font-medium">
+              <p className="text-xs sm:text-sm md:text-base text-gray-700 font-medium truncate">
                 {selectedSeller 
                   ? `Showing data for: ${sellers.find(s => s.id === selectedSeller)?.name || sellers.find(s => s.id === selectedSeller)?.email || 'Selected Seller'}`
                   : "Welcome back! Here's your comprehensive overview"
                 }
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 md:gap-4 w-full md:w-auto">
               {/* Seller Filter Dropdown */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="seller-filter" className="text-sm font-semibold text-gray-700 whitespace-nowrap">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 sm:flex-initial">
+                <label htmlFor="seller-filter" className="text-xs sm:text-sm font-semibold text-gray-700 whitespace-nowrap hidden sm:block">
                   Filter by Seller:
                 </label>
                 <select
@@ -226,7 +226,7 @@ const AdminDashboard = () => {
                     console.log('[AdminDashboard] Seller changed to:', e.target.value);
                     setSelectedSeller(e.target.value);
                   }}
-                  className="px-4 py-2 border-2 border-green-300 rounded-lg bg-white text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 min-w-[200px]"
+                  className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 border-2 border-green-300 rounded-lg bg-white text-gray-800 text-xs sm:text-sm md:text-base font-medium focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 min-w-0 sm:min-w-[150px] md:min-w-[200px]"
                 >
                   <option value="">All Sellers</option>
                   {sellers.map((seller) => (
@@ -241,7 +241,7 @@ const AdminDashboard = () => {
                       console.log('[AdminDashboard] Clearing seller filter');
                       setSelectedSeller('');
                     }}
-                    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
+                    className="px-2 sm:px-3 py-1.5 sm:py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-xs sm:text-sm font-medium whitespace-nowrap"
                     title="Clear filter"
                   >
                     Clear
@@ -249,8 +249,8 @@ const AdminDashboard = () => {
                 )}
               </div>
               <div className="hidden md:block">
-                <div className="bg-white rounded-full p-4 shadow-lg">
-                  <span className="text-4xl">🎯</span>
+                <div className="bg-white rounded-full p-3 sm:p-4 shadow-lg">
+                  <span className="text-2xl sm:text-3xl md:text-4xl">🎯</span>
                 </div>
               </div>
             </div>
@@ -258,82 +258,82 @@ const AdminDashboard = () => {
         </div>
 
         {/* Orders Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-6">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">📦</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Total Orders</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 md:mb-3">
+                  <span className="text-lg sm:text-xl md:text-2xl">📦</span>
+                  <p className="text-gray-700 text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide truncate">Total Orders</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-1">{stats?.total_orders || stats?.totalOrders || 0}</p>
-                <div className="h-1 bg-green-400 rounded-full mt-2"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-1">{stats?.total_orders || stats?.totalOrders || 0}</p>
+                <div className="h-0.5 sm:h-1 bg-green-400 rounded-full mt-1 sm:mt-2"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">✅</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Delivered</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 md:mb-3">
+                  <span className="text-lg sm:text-xl md:text-2xl">✅</span>
+                  <p className="text-gray-700 text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide truncate">Delivered</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-green-700 mb-1">{stats?.delivered || 0}</p>
-                <div className="h-1 bg-green-500 rounded-full mt-2"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-green-700 mb-1">{stats?.delivered || 0}</p>
+                <div className="h-0.5 sm:h-1 bg-green-500 rounded-full mt-1 sm:mt-2"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">↩️</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Returned</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 md:mb-3">
+                  <span className="text-lg sm:text-xl md:text-2xl">↩️</span>
+                  <p className="text-gray-700 text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide truncate">Returned</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-red-600 mb-1">{stats?.returned || 0}</p>
-                <div className="h-1 bg-red-400 rounded-full mt-2"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-red-600 mb-1">{stats?.returned || 0}</p>
+                <div className="h-0.5 sm:h-1 bg-red-400 rounded-full mt-1 sm:mt-2"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">⏳</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Pending</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 md:mb-3">
+                  <span className="text-lg sm:text-xl md:text-2xl">⏳</span>
+                  <p className="text-gray-700 text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide truncate">Pending</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-yellow-600 mb-1">{stats?.pending || 0}</p>
-                <div className="h-1 bg-yellow-400 rounded-full mt-2"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-yellow-600 mb-1">{stats?.pending || 0}</p>
+                <div className="h-0.5 sm:h-1 bg-yellow-400 rounded-full mt-1 sm:mt-2"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">✓</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Confirmed</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 md:mb-3">
+                  <span className="text-lg sm:text-xl md:text-2xl">✓</span>
+                  <p className="text-gray-700 text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide truncate">Confirmed</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-blue-600 mb-1">{stats?.confirmed || 0}</p>
-                <div className="h-1 bg-blue-400 rounded-full mt-2"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-blue-600 mb-1">{stats?.confirmed || 0}</p>
+                <div className="h-0.5 sm:h-1 bg-blue-400 rounded-full mt-1 sm:mt-2"></div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Main Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
           {/* Delivery Ratio */}
-          <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-teal-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-teal-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-3xl">📈</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Delivery Ratio</p>
+                <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
+                  <span className="text-xl sm:text-2xl md:text-3xl">📈</span>
+                  <p className="text-gray-700 text-xs sm:text-sm font-semibold uppercase tracking-wide">Delivery Ratio</p>
                 </div>
-                <p className="text-4xl md:text-5xl font-extrabold text-teal-700 mb-2">{stats?.delivery_ratio?.toFixed(1) || 0}%</p>
-                <p className="text-gray-600 text-xs font-medium">{stats?.delivered || 0} delivered orders</p>
-                <div className="h-1 bg-teal-400 rounded-full mt-3"></div>
+                <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-teal-700 mb-1 sm:mb-2">{stats?.delivery_ratio?.toFixed(1) || 0}%</p>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-medium">{stats?.delivered || 0} delivered orders</p>
+                <div className="h-0.5 sm:h-1 bg-teal-400 rounded-full mt-2 sm:mt-3"></div>
               </div>
             </div>
           </div>
@@ -344,10 +344,10 @@ const AdminDashboard = () => {
           {/* Status Distribution - Pie Charts */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {/* Delivered Pie Chart */}
-            <div className="bg-green-50 rounded-lg shadow-lg p-4 md:p-6 border border-green-200">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Order Status Distribution</h3>
-              <div className="w-full" style={{ minHeight: '250px' }}>
-                <ResponsiveContainer width="100%" height={250}>
+            <div className="bg-green-50 rounded-lg shadow-lg p-3 sm:p-4 md:p-6 border border-green-200">
+              <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 mb-2 sm:mb-3 md:mb-4">Order Status Distribution</h3>
+              <div className="w-full" style={{ minHeight: '200px' }}>
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
                       data={[
@@ -375,19 +375,19 @@ const AdminDashboard = () => {
             </div>
 
             {/* Delivered KPI donut */}
-            <div className="bg-green-50 rounded-lg shadow-lg p-4 md:p-6 border border-green-200">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Delivered Ratio</h3>
+            <div className="bg-green-50 rounded-lg shadow-lg p-3 sm:p-4 md:p-6 border border-green-200">
+              <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 mb-2 sm:mb-3 md:mb-4">Delivered Ratio</h3>
               <div className="flex flex-col items-center">
-                <div className="w-32 h-32 md:w-44 md:h-44">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44">
                   <KpiDonut
                     value={stats?.delivered || 0}
                     total={stats?.total_orders || stats?.totalOrders || 0}
                     color="#10b981"
                   />
                 </div>
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-gray-700 font-medium">Delivered Orders</p>
-                  <p className="text-xl md:text-2xl font-bold text-gray-900">
+                <div className="mt-2 sm:mt-3 md:mt-4 text-center">
+                  <p className="text-xs sm:text-sm text-gray-700 font-medium">Delivered Orders</p>
+                  <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">
                     {stats?.delivered || 0} / {stats?.total_orders || stats?.totalOrders || 0}
                   </p>
                 </div>
@@ -395,19 +395,19 @@ const AdminDashboard = () => {
             </div>
 
             {/* Returned KPI donut */}
-            <div className="bg-green-50 rounded-lg shadow-lg p-4 md:p-6 border border-green-200">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Return Ratio</h3>
+            <div className="bg-green-50 rounded-lg shadow-lg p-3 sm:p-4 md:p-6 border border-green-200">
+              <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-800 mb-2 sm:mb-3 md:mb-4">Return Ratio</h3>
               <div className="flex flex-col items-center">
-                <div className="w-32 h-32 md:w-44 md:h-44">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44">
                   <KpiDonut
                     value={stats?.returned || 0}
                     total={stats?.total_orders || stats?.totalOrders || 0}
                     color="#f43f5e"
                   />
                 </div>
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-gray-700 font-medium">Returned Orders</p>
-                  <p className="text-xl md:text-2xl font-bold text-gray-900">
+                <div className="mt-2 sm:mt-3 md:mt-4 text-center">
+                  <p className="text-xs sm:text-sm text-gray-700 font-medium">Returned Orders</p>
+                  <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">
                     {stats?.returned || 0} / {stats?.total_orders || stats?.totalOrders || 0}
                   </p>
                 </div>
@@ -683,70 +683,70 @@ const AdminDashboard = () => {
 
         {/* Financial Stats Section */}
         <div className="mt-8">
-          <div className="mb-6">
-            <h2 className="text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-              <span className="text-4xl">💼</span>
-              Financial Overview
+          <div className="mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-2 sm:gap-3">
+              <span className="text-2xl sm:text-3xl md:text-4xl">💼</span>
+              <span>Financial Overview</span>
             </h2>
-            <p className="text-gray-600 mt-2">Total sales, shipper price, seller profit, and admin profit</p>
+            <p className="text-gray-600 mt-1 sm:mt-2 text-xs sm:text-sm">Total sales and shipper price from delivered orders only. Admin profit calculated accordingly.</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-blue-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-blue-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-3xl">💰</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Total Sales</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
+                  <span className="text-xl sm:text-2xl md:text-3xl">💰</span>
+                  <p className="text-gray-700 text-xs sm:text-sm font-semibold uppercase tracking-wide truncate">Total Sales</p>
                 </div>
-                <p className="text-3xl md:text-4xl font-extrabold text-blue-900 mb-2">
+                <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-blue-900 mb-1 sm:mb-2 break-words">
                   Rs. {parseFloat(stats?.total_sales || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-gray-600 text-xs font-medium">Total revenue from all orders</p>
-                <div className="h-1 bg-blue-400 rounded-full mt-3"></div>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-medium">Total revenue from delivered orders only</p>
+                <div className="h-0.5 sm:h-1 bg-blue-400 rounded-full mt-2 sm:mt-3"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-purple-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-purple-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-3xl">🚚</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Shipper Price</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
+                  <span className="text-xl sm:text-2xl md:text-3xl">🚚</span>
+                  <p className="text-gray-700 text-xs sm:text-sm font-semibold uppercase tracking-wide truncate">Shipper Price</p>
                 </div>
-                <p className="text-3xl md:text-4xl font-extrabold text-purple-900 mb-2">
+                <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-purple-900 mb-1 sm:mb-2 break-words">
                   Rs. {parseFloat(stats?.total_shipper_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-gray-600 text-xs font-medium">Total shipping costs</p>
-                <div className="h-1 bg-purple-400 rounded-full mt-3"></div>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-medium">Total shipping costs from delivered orders only</p>
+                <div className="h-0.5 sm:h-1 bg-purple-400 rounded-full mt-2 sm:mt-3"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-green-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-green-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-3xl">💵</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Seller Profit</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
+                  <span className="text-xl sm:text-2xl md:text-3xl">💵</span>
+                  <p className="text-gray-700 text-xs sm:text-sm font-semibold uppercase tracking-wide truncate">Seller Profit</p>
                 </div>
-                <p className="text-3xl md:text-4xl font-extrabold text-green-700 mb-2">
+                <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-green-700 mb-1 sm:mb-2 break-words">
                   Rs. {parseFloat(stats?.seller_profit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-gray-600 text-xs font-medium">Net profit from invoices</p>
-                <div className="h-1 bg-green-500 rounded-full mt-3"></div>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-medium">Net profit from invoices</p>
+                <div className="h-0.5 sm:h-1 bg-green-500 rounded-full mt-2 sm:mt-3"></div>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl shadow-xl p-5 md:p-6 border-2 border-orange-300 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg sm:rounded-xl shadow-lg sm:shadow-xl p-3 sm:p-4 md:p-5 lg:p-6 border-2 border-orange-300 hover:shadow-xl sm:hover:shadow-2xl transition-all duration-300">
             <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-3xl">👑</span>
-                  <p className="text-gray-700 text-sm font-semibold uppercase tracking-wide">Admin Profit</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
+                  <span className="text-xl sm:text-2xl md:text-3xl">👑</span>
+                  <p className="text-gray-700 text-xs sm:text-sm font-semibold uppercase tracking-wide truncate">Admin Profit</p>
                 </div>
-                <p className="text-3xl md:text-4xl font-extrabold text-orange-700 mb-2">
+                <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-orange-700 mb-1 sm:mb-2 break-words">
                   Rs. {Math.max(0, parseFloat(stats?.admin_profit || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-gray-600 text-xs font-medium">Admin earnings (remaining)</p>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-medium">Admin earnings (remaining)</p>
                 <div className="h-1 bg-orange-400 rounded-full mt-3"></div>
               </div>
             </div>
