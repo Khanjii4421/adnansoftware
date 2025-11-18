@@ -17,6 +17,7 @@ import LedgerDashboard from './pages/LedgerDashboard';
 import LedgerCustomers from './pages/LedgerCustomers';
 import LedgerEntries from './pages/LedgerEntries';
 import GenerateBill from './pages/GenerateBill';
+import OutOfStock from './pages/OutOfStock';
 import InvoiceMatch from './pages/InvoiceMatch';
 import Suppliers from './pages/Suppliers';
 import PurchaseEntry from './pages/PurchaseEntry';
@@ -192,6 +193,14 @@ function App() {
             element={
               <PrivateRoute>
                 <ExpensesTracker />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/out-of-stock"
+            element={
+              <PrivateRoute>
+                <OutOfStock />
               </PrivateRoute>
             }
           />

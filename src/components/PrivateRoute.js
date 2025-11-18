@@ -22,10 +22,14 @@ const PrivateRoute = ({ children }) => {
   
   // Allow sellers to only access seller routes
   if (user?.role === 'seller') {
-    // Sellers can access /seller, /orders, and /invoices routes
+    // Sellers can access /seller, /orders, /invoices, /out-of-stock, and /return-scan routes
     if (currentPath.startsWith('/admin') || currentPath === '/sellers' || currentPath === '/products' || 
         currentPath === '/inventory' || 
-        currentPath === '/automation' || currentPath === '/return-management') {
+        currentPath === '/automation' || currentPath === '/return-management' ||
+        currentPath === '/generate-bill' || currentPath === '/purchasing' || 
+        currentPath.startsWith('/purchasing') || currentPath === '/ledger' ||
+        currentPath.startsWith('/ledger') || currentPath === '/invoice-match' ||
+        currentPath === '/expenses-tracker') {
       return <Navigate to="/seller" replace />;
     }
   }

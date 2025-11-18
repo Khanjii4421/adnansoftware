@@ -207,10 +207,8 @@ const Layout = ({ children }) => {
     { path: '/seller', label: 'Dashboard', icon: '📊', bgColor: 'bg-blue-50', textColor: 'text-blue-700', hoverBg: 'hover:bg-blue-100' },
     { path: '/orders', label: 'My Orders', icon: '📦', bgColor: 'bg-green-50', textColor: 'text-green-700', hoverBg: 'hover:bg-green-100' },
     { path: '/invoices', label: 'Billing', icon: '🧾', bgColor: 'bg-purple-50', textColor: 'text-purple-700', hoverBg: 'hover:bg-purple-100' },
-    { path: '/generate-bill', label: 'Generate Bill', icon: '🧾', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700', hoverBg: 'hover:bg-indigo-100' },
-    { path: '/purchasing', label: 'Purchasing', icon: '🛒', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700', hoverBg: 'hover:bg-emerald-100' },
+    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
     { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-orange-50', textColor: 'text-orange-700', hoverBg: 'hover:bg-orange-100' },
-    { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-teal-50', textColor: 'text-teal-700', hoverBg: 'hover:bg-teal-100' },
   ];
 
   const adminMenuItems = [
@@ -228,6 +226,7 @@ const Layout = ({ children }) => {
     { path: '/return-management', label: 'Return Management', icon: '↩️', bgColor: 'bg-orange-50', textColor: 'text-orange-700', hoverBg: 'hover:bg-orange-100' },
     { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-amber-50', textColor: 'text-amber-700', hoverBg: 'hover:bg-amber-100' },
     { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-teal-50', textColor: 'text-teal-700', hoverBg: 'hover:bg-teal-100' },
+    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
   ];
 
   const menuItems = user?.role === 'admin' ? adminMenuItems : sellerMenuItems;

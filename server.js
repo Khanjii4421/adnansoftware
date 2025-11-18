@@ -1685,6 +1685,125 @@ app.get('/api/inventory/out-of-stock', authenticateToken, async (req, res) => {
   }
 });
 
+// Get managed out of stock products (from out_of_stock_products table)
+app.get('/api/inventory/out-of-stock-managed', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Determine seller_id - sellers see only their products, admins can see all
+    let sellerId = null;
+    if (req.user.role === 'seller') {
+      sellerId = req.user.id;
+    }
+
+    let query = supabase
+      .from('out_of_stock_products')
+      .select('*, seller:users(id, name, email)')
+      .order('created_at', { ascending: false });
+
+    if (sellerId) {
+      query = query.eq('seller_id', sellerId);
+    }
+
+    const { data: products, error } = await query;
+
+    if (error) throw error;
+
+    const productsWithSeller = (products || []).map(item => ({
+      id: item.id,
+      product_code: item.product_code,
+      category: item.category,
+      seller_id: item.seller_id,
+      seller_name: item.seller?.name || 'Unknown',
+      seller_email: item.seller?.email || null,
+      created_at: item.created_at
+    }));
+
+    res.json({ products: productsWithSeller });
+  } catch (error) {
+    console.error('Error fetching managed out of stock products:', error);
+    res.status(500).json({ error: 'Failed to fetch out of stock products' });
+  }
+});
+
+// Add product to out of stock list (admin only)
+app.post('/api/inventory/out-of-stock', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admin can add out of stock products' });
+    }
+
+    const { product_code, category, seller_id } = req.body;
+
+    if (!product_code || !seller_id) {
+      return res.status(400).json({ error: 'Product code and seller_id are required' });
+    }
+
+    // Check if already exists
+    const { data: existing, error: checkError } = await supabase
+      .from('out_of_stock_products')
+      .select('id')
+      .eq('product_code', product_code.toUpperCase().trim())
+      .eq('seller_id', seller_id)
+      .single();
+
+    if (existing) {
+      return res.status(400).json({ error: 'Product already marked as out of stock for this seller' });
+    }
+
+    // Insert new out of stock product
+    const { data: product, error: insertError } = await supabase
+      .from('out_of_stock_products')
+      .insert([{
+        product_code: product_code.toUpperCase().trim(),
+        category: category || null,
+        seller_id: seller_id
+      }])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    res.json({ product, message: 'Product marked as out of stock successfully' });
+  } catch (error) {
+    console.error('Error adding out of stock product:', error);
+    res.status(500).json({ error: 'Failed to add out of stock product' });
+  }
+});
+
+// Remove product from out of stock list (admin only)
+app.delete('/api/inventory/out-of-stock/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admin can remove out of stock products' });
+    }
+
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('out_of_stock_products')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({ message: 'Product removed from out of stock list' });
+  } catch (error) {
+    console.error('Error removing out of stock product:', error);
+    res.status(500).json({ error: 'Failed to remove out of stock product' });
+  }
+});
+
 // Create inventory item (seller-specific)
 app.post('/api/inventory', authenticateToken, async (req, res) => {
   try {
@@ -2120,10 +2239,17 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { data: invoices, error } = await supabase
+    let query = supabase
       .from('invoices')
       .select('*')
       .order('created_at', { ascending: false });
+
+    // If seller, only show their invoices
+    if (req.user.role === 'seller') {
+      query = query.eq('seller_id', req.user.id);
+    }
+
+    const { data: invoices, error } = await query;
 
     if (error) throw error;
 

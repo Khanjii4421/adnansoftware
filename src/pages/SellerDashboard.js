@@ -13,6 +13,11 @@ const SellerDashboard = () => {
   const [trends, setTrends] = useState([]);
   const [trendPeriod, setTrendPeriod] = useState('week');
   const [kpiData, setKpiData] = useState(null);
+  const [invoiceStats, setInvoiceStats] = useState({
+    totalOrders: 0,
+    totalProfit: 0,
+    paidAmount: 0
+  });
 
   useEffect(() => {
     fetchStats();
@@ -22,16 +27,36 @@ const SellerDashboard = () => {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/dashboard/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setStats(response.data.stats);
+      const [statsResponse, invoicesResponse] = await Promise.all([
+        axios.get(`${API_URL}/dashboard/stats`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_URL}/invoices`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+      
+      setStats(statsResponse.data.stats);
       
       // Set KPI data from dashboard stats
       setKpiData({
-        product_kpis: response.data.product_kpis || [],
-        city_kpis: response.data.city_kpis || [],
-        daily_trends: response.data.daily_trends || []
+        product_kpis: statsResponse.data.product_kpis || [],
+        city_kpis: statsResponse.data.city_kpis || [],
+        daily_trends: statsResponse.data.daily_trends || []
+      });
+
+      // Calculate invoice stats
+      const invoices = invoicesResponse.data.invoices || [];
+      const totalOrders = invoices.reduce((sum, inv) => sum + (inv.total_orders || 0), 0);
+      const totalProfit = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_profit || 0), 0);
+      const paidAmount = invoices
+        .filter(inv => inv.is_paid)
+        .reduce((sum, inv) => sum + parseFloat(inv.total_profit || 0), 0);
+
+      setInvoiceStats({
+        totalOrders,
+        totalProfit,
+        paidAmount
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -127,66 +152,43 @@ const SellerDashboard = () => {
           </div>
         </div>
 
-        {/* Additional Stats with Financial Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+        {/* Invoice-based Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Week Orders</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats?.week_orders || 0}</p>
+                <p className="text-blue-100 text-sm font-medium mb-1">Total Orders</p>
+                <p className="text-4xl font-bold">{invoiceStats.totalOrders}</p>
+                <p className="text-blue-100 text-xs mt-2">From all invoices</p>
               </div>
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <span className="text-2xl">📅</span>
+              <div className="p-4 bg-white bg-opacity-20 rounded-full">
+                <span className="text-4xl">📦</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Month Orders</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats?.month_orders || 0}</p>
+                <p className="text-green-100 text-sm font-medium mb-1">Total Profit</p>
+                <p className="text-3xl font-bold">Rs. {invoiceStats.totalProfit.toLocaleString()}</p>
+                <p className="text-green-100 text-xs mt-2">From all invoices</p>
               </div>
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <span className="text-2xl">📊</span>
+              <div className="p-4 bg-white bg-opacity-20 rounded-full">
+                <span className="text-4xl">💰</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Total Sales</p>
-                <p className="text-2xl font-bold text-gray-800 mt-1">Rs. {parseFloat(stats?.total_sales || 0).toLocaleString()}</p>
+                <p className="text-purple-100 text-sm font-medium mb-1">Paid Amount</p>
+                <p className="text-3xl font-bold">Rs. {invoiceStats.paidAmount.toLocaleString()}</p>
+                <p className="text-purple-100 text-xs mt-2">Amount received</p>
               </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <span className="text-2xl">💰</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-indigo-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium">Shipper Price</p>
-                <p className="text-2xl font-bold text-indigo-800 mt-1">Rs. {parseFloat(stats?.total_shipper_price || 0).toLocaleString()}</p>
-                <p className="text-gray-500 text-xs mt-1">Total shipping cost</p>
-              </div>
-              <div className="p-3 bg-indigo-50 rounded-lg">
-                <span className="text-2xl">🚚</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-teal-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium">Profit</p>
-                <p className="text-2xl font-bold text-teal-800 mt-1">Rs. {parseFloat(stats?.total_profit || 0).toLocaleString()}</p>
-                <p className="text-gray-500 text-xs mt-1">Your earnings</p>
-              </div>
-              <div className="p-3 bg-teal-50 rounded-lg">
-                <span className="text-2xl">💵</span>
+              <div className="p-4 bg-white bg-opacity-20 rounded-full">
+                <span className="text-4xl">✅</span>
               </div>
             </div>
           </div>
