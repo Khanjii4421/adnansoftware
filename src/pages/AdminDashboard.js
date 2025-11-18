@@ -12,6 +12,9 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedSeller, setSelectedSeller] = useState('');
   const [sellers, setSellers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [kpis, setKpis] = useState({
     product_kpis: [],
     city_kpis: [],
@@ -39,6 +42,41 @@ const AdminDashboard = () => {
     };
     fetchSellers();
   }, []);
+
+  // Search orders by reference number
+  const handleSearchOrders = async () => {
+    if (!searchTerm.trim()) {
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = getApiUrl();
+      const response = await axios.get(`${apiUrl}/orders`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { search: searchTerm.trim() }
+      });
+      setSearchResults(response.data.orders || []);
+      setShowSearchResults(true);
+    } catch (error) {
+      console.error('Error searching orders:', error);
+      setSearchResults([]);
+      setShowSearchResults(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm.trim()) {
+        handleSearchOrders();
+      } else {
+        setShowSearchResults(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const fetchDashboardData = async () => {
     try {
@@ -213,7 +251,17 @@ const AdminDashboard = () => {
                 }
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 md:gap-4 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 md:gap-4 w-full md:w-auto">
+              {/* Search Box */}
+              <div className="flex-1 sm:flex-initial min-w-[200px]">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by reference number..."
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-green-300 rounded-lg bg-white text-gray-800 text-xs sm:text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
               {/* Seller Filter Dropdown */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 sm:flex-initial">
                 <label htmlFor="seller-filter" className="text-xs sm:text-sm font-semibold text-gray-700 whitespace-nowrap hidden sm:block">
@@ -256,6 +304,73 @@ const AdminDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Search Results */}
+        {showSearchResults && searchResults.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border-2 border-green-300">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+                Search Results ({searchResults.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setShowSearchResults(false);
+                }}
+                className="text-red-600 hover:text-red-800 font-medium"
+              >
+                Close
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Reference</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Customer</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Seller</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {searchResults.map((order) => (
+                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {order.seller_reference_number}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        {order.customer_name}
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          order.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                          order.status === 'returned' ? 'bg-red-100 text-red-800' :
+                          order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        {order.seller?.name || 'Unknown'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        {new Date(order.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {showSearchResults && searchResults.length === 0 && searchTerm.trim() && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
+            <p className="text-yellow-800">No orders found with reference number "{searchTerm}"</p>
+          </div>
+        )}
 
         {/* Orders Summary */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-6">
