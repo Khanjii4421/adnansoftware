@@ -63,12 +63,20 @@ const sanitizeInput = (req, res, next) => {
   next();
 };
 
-// Apply sanitization to all routes except file uploads
+// Apply sanitization to all routes except file uploads and health checks
 app.use((req, res, next) => {
-  if (req.path.includes('/bulk-upload') || req.path.includes('/upload')) {
+  if (req.path.includes('/bulk-upload') || 
+      req.path.includes('/upload') || 
+      req.path === '/api/health' || 
+      req.path === '/api/test') {
     return next();
   }
-  sanitizeInput(req, res, next);
+  try {
+    sanitizeInput(req, res, next);
+  } catch (error) {
+    console.error('Sanitization error:', error);
+    next(); // Continue even if sanitization fails
+  }
 });
 
 // Multer configuration for file uploads
@@ -113,15 +121,26 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Health check endpoint (no authentication required for basic health check)
+// Railway uses this for health checks
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    database: isSupabaseConfigured ? 'connected' : 'not configured',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    port: PORT,
-    host: process.env.HOST || '0.0.0.0'
-  });
+  try {
+    res.status(200).json({ 
+      status: 'ok', 
+      database: isSupabaseConfigured ? 'connected' : 'not configured',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      port: PORT,
+      host: process.env.HOST || '0.0.0.0',
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Test endpoint for connectivity (no authentication required)
@@ -6670,26 +6689,69 @@ if (isProduction && buildExists) {
   console.log('ℹ️  API endpoints available at: http://localhost:' + PORT + '/api/*');
 }
 
-// Start server
+// Error handling for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+// Error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // Don't exit immediately, give time for cleanup
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
+
+// Start server with error handling
 // For Railway/cloud deployments, bind to 0.0.0.0 to accept external connections
 const HOST = process.env.HOST || '0.0.0.0';
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`📊 Database: ${isSupabaseConfigured ? '✅ Connected' : '⚠️  Not configured'}`);
-  console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET_KEY ? '✅ Set' : '⚠️  Using default'}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Listening on: ${HOST}:${PORT}`);
-  console.log(`\n✅ Expenses Tracker Routes Registered:`);
-  console.log(`   - GET  /api/expenses`);
-  console.log(`   - GET  /api/expenses/summary`);
-  console.log(`   - GET  /api/expenses/chart`);
-  console.log(`   - GET  /api/expenses/categories`);
-  console.log(`   - POST /api/expenses`);
-  console.log(`   - PUT  /api/expenses/:id`);
-  console.log(`   - DELETE /api/expenses/:id\n`);
-  if (!isSupabaseConfigured) {
-    console.log(`\n⚠️  WARNING: Supabase is not configured!`);
-    console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
-    console.log(`   See env.example for reference\n`);
-  }
-});
+
+try {
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+    console.log(`📊 Database: ${isSupabaseConfigured ? '✅ Connected' : '⚠️  Not configured'}`);
+    console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET_KEY ? '✅ Set' : '⚠️  Using default'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Listening on: ${HOST}:${PORT}`);
+    console.log(`\n✅ Expenses Tracker Routes Registered:`);
+    console.log(`   - GET  /api/expenses`);
+    console.log(`   - GET  /api/expenses/summary`);
+    console.log(`   - GET  /api/expenses/chart`);
+    console.log(`   - GET  /api/expenses/categories`);
+    console.log(`   - POST /api/expenses`);
+    console.log(`   - PUT  /api/expenses/:id`);
+    console.log(`   - DELETE /api/expenses/:id\n`);
+    if (!isSupabaseConfigured) {
+      console.log(`\n⚠️  WARNING: Supabase is not configured!`);
+      console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
+      console.log(`   See env.example for reference\n`);
+    }
+  });
+
+  // Handle server errors
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Please use a different port.`);
+      process.exit(1);
+    } else {
+      console.error('❌ Server error:', error);
+      process.exit(1);
+    }
+  });
+} catch (error) {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
+}
