@@ -19,6 +19,8 @@ const Automation = () => {
   const [returnScanTrackingIds, setReturnScanTrackingIds] = useState('');
   const [selectedSeller, setSelectedSeller] = useState('');
   const [sellers, setSellers] = useState([]);
+  const [digiPortalSyncing, setDigiPortalSyncing] = useState(false);
+  const [digiPortalResults, setDigiPortalResults] = useState(null);
 
   useEffect(() => {
     fetchSellers();
@@ -319,6 +321,31 @@ const Automation = () => {
     }
   };
 
+  const handleDigiPortalSync = async () => {
+    setDigiPortalSyncing(true);
+    setDigiPortalResults(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_URL}/orders/sync-digi-portal`,
+        selectedSeller ? { seller_id: selectedSeller } : {},
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setDigiPortalResults(response.data);
+      alert(`✅ Sync Complete!\n\nTotal Checked: ${response.data.total}\nUpdated: ${response.data.updated}\nErrors: ${response.data.errors}`);
+    } catch (error) {
+      console.error('Error syncing from Digi portal:', error);
+      alert('Error syncing from Digi portal: ' + (error.response?.data?.error || error.message));
+      setDigiPortalResults({ error: error.response?.data?.error || error.message });
+    } finally {
+      setDigiPortalSyncing(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6 p-6">
@@ -381,6 +408,16 @@ const Automation = () => {
             }`}
           >
             Bulk Return Scan
+          </button>
+          <button
+            onClick={() => setActiveTab('digi-portal')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'digi-portal'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            🔄 Digi Portal Sync
           </button>
         </div>
 
@@ -606,8 +643,107 @@ const Automation = () => {
           </div>
         )}
 
+        {/* Digi Portal Sync Tab */}
+        {activeTab === 'digi-portal' && (
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+              <h3 className="font-semibold text-blue-900 mb-2">🔄 Digi Portal Automatic Status Sync</h3>
+              <p className="text-sm text-blue-800 mb-4">
+                This feature automatically syncs order status from Digi Portal (TCS, MNP, Leopard, etc.) based on tracking IDs.
+                Only orders with status "delivered" or "returned" will be updated.
+              </p>
+              <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
+                <li>Syncs all pending/confirmed orders with tracking IDs</li>
+                <li>Supports multiple courier services (TCS, MNP, Leopard, etc.)</li>
+                <li>Only updates "delivered" and "returned" statuses</li>
+                <li>Automatic sync runs every 15 minutes (if enabled in .env)</li>
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Manual Sync</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Click the button below to manually sync all orders from Digi Portal. 
+                {selectedSeller && (
+                  <span className="text-green-600 font-medium"> Orders will be synced only for selected seller.</span>
+                )}
+              </p>
+              <button
+                onClick={handleDigiPortalSync}
+                disabled={digiPortalSyncing}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50 hover:bg-blue-700 font-medium"
+              >
+                {digiPortalSyncing ? '🔄 Syncing...' : '🔄 Sync from Digi Portal'}
+              </button>
+
+              {digiPortalResults && (
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-3">Sync Results</h3>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 font-medium">Total Checked</p>
+                      <p className="text-2xl font-bold text-gray-700">{digiPortalResults.total || 0}</p>
+                    </div>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-sm text-green-600 font-medium">Updated</p>
+                      <p className="text-2xl font-bold text-green-700">{digiPortalResults.updated || 0}</p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-sm text-red-600 font-medium">Errors</p>
+                      <p className="text-2xl font-bold text-red-700">{digiPortalResults.errors || 0}</p>
+                    </div>
+                  </div>
+
+                  {digiPortalResults.details && digiPortalResults.details.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="font-semibold mb-2">Details:</h4>
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+                        {digiPortalResults.details.slice(0, 20).map((detail, index) => (
+                          <div key={index} className={`text-sm mb-2 ${detail.success ? 'text-green-700' : 'text-red-700'}`}>
+                            {detail.success ? (
+                              <span>✅ {detail.trackingId}: Updated to {detail.status}</span>
+                            ) : (
+                              <span>❌ {detail.trackingId || detail.orderId}: {detail.error}</span>
+                            )}
+                          </div>
+                        ))}
+                        {digiPortalResults.details.length > 20 && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            ... and {digiPortalResults.details.length - 20} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {digiPortalResults.error && (
+                    <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-red-700 text-sm">{digiPortalResults.error}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+              <h3 className="font-semibold text-yellow-900 mb-2">⚙️ Configuration Required</h3>
+              <p className="text-sm text-yellow-800 mb-2">
+                To use this feature, you need to configure Digi Portal credentials in your <code className="bg-yellow-100 px-1 rounded">.env</code> file:
+              </p>
+              <pre className="bg-yellow-100 p-3 rounded text-xs overflow-x-auto">
+{`DIGI_PORTAL_AUTO_SYNC_ENABLED=true
+DIGI_PORTAL_BASE_URL=https://your-digi-portal-url.com/api
+DIGI_PORTAL_USERNAME=your-username
+DIGI_PORTAL_PASSWORD=your-password
+DIGI_PORTAL_AHSAN_USERNAME=ahsan-username
+DIGI_PORTAL_AHSAN_PASSWORD=ahsan-password`}
+              </pre>
+            </div>
+          </div>
+        )}
+
         {/* Results Section - Show for all tabs */}
-        {results && (
+        {results && activeTab !== 'digi-portal' && (
           <div className="bg-white rounded-lg shadow p-6 mt-6">
             <h2 className="text-xl font-semibold mb-4">📊 Update Results</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">

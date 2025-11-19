@@ -340,6 +340,50 @@ const Settings = () => {
                 Import old orders from Excel file. Orders will be processed in batches of 2000.
               </p>
               
+              {/* Template Download Section */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                  <span>📋</span> Download Template
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                  Download Excel template with all required columns for old orders import:
+                </p>
+                <div className="space-y-1 text-xs text-blue-700 dark:text-blue-300 mb-3">
+                  <p><strong>Required Columns:</strong> Ref #, Customer, Phone, Address, City, Products, Seller Price</p>
+                  <p><strong>Optional Columns:</strong> Phone 2, Courier, Shipper Price, DC, Profit, Tracking ID, Status, Paid</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const apiUrl = getApiUrl();
+                      const response = await fetch(`${apiUrl}/orders/bulk-upload-template`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!response.ok) {
+                        throw new Error('Failed to download template');
+                      }
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'old-orders-import-template.xlsx';
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      console.error('Error downloading template:', err);
+                      alert('Failed to download template. Please try again.');
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  📥 Download Old Orders Template (Excel)
+                </button>
+              </div>
+              
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

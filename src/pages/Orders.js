@@ -1073,11 +1073,53 @@ Thank you for your order!`;
 
         {/* Upload Modal */}
         {showUploadModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 my-8">
               <h3 className="text-lg font-semibold mb-4">Bulk Upload Orders (CSV/Excel)</h3>
+              
+              {/* Template Download Section */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-900 mb-2">📥 Download Template for Old Orders</h4>
+                <p className="text-sm text-blue-800 mb-3">
+                  Download Excel template with all columns for old orders:
+                </p>
+                <div className="space-y-1 text-xs text-blue-700 mb-3">
+                  <p><strong>Required:</strong> Ref #, Customer, Phone, Address, City, Products, Seller Price</p>
+                  <p><strong>Optional:</strong> Seller, Phone 2, Courier, Shipper Price, DC, Profit, Tracking ID, Status, Paid</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const response = await fetch(`${API_URL}/orders/bulk-upload-template`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!response.ok) {
+                        throw new Error('Failed to download template');
+                      }
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'old-orders-template.xlsx';
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      console.error('Error downloading template:', err);
+                      alert('Failed to download template. Please try again.');
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  📥 Download Old Orders Template (Excel)
+                </button>
+              </div>
+
               <p className="text-sm text-gray-600 mb-4">
-                Upload Excel file with columns: <strong>Ref #</strong> (optional), <strong>Customer</strong>, <strong>Phone</strong>, <strong>Address</strong>, <strong>City</strong>, <strong>Courier</strong>, <strong>Products</strong>, <strong>Seller Price</strong>, <strong>Shipper Price</strong>, <strong>DC</strong>
+                Upload Excel file with columns: <strong>Ref #</strong>, <strong>Customer</strong>, <strong>Phone</strong>, <strong>Address</strong>, <strong>City</strong>, <strong>Courier</strong>, <strong>Products</strong>, <strong>Seller Price</strong>, <strong>Shipper Price</strong>, <strong>DC</strong>, <strong>Profit</strong>, <strong>Tracking ID</strong>, <strong>Status</strong>, <strong>Paid</strong>
               </p>
               <form onSubmit={handleFileUpload}>
                 {user?.role === 'admin' && (

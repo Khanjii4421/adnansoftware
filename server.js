@@ -8,6 +8,8 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
+const cron = require('node-cron');
+const axios = require('axios');
 const supabase = require('./config/supabase');
 
 const app = express();
@@ -793,11 +795,19 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       console.log('[GET /api/orders] Showing all orders (paid and unpaid)');
     }
 
-    // Search filter - includes reference number, customer name, phone, and tracking ID
+    // Search filter - includes reference number, seller, customer name, phone, and tracking ID
     if (search) {
       const searchTerm = search.trim();
-      // Search in reference number (partial match), customer name, phone, and tracking ID
-      query = query.or(`seller_reference_number.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%,phone_number_1.ilike.%${searchTerm}%,phone_number_2.ilike.%${searchTerm}%,tracking_id.ilike.%${searchTerm}%`);
+      // Search in reference number (partial match), seller name/email, customer name, phone, and tracking ID
+      query = query.or(
+        `seller_reference_number.ilike.%${searchTerm}%,` +
+        `customer_name.ilike.%${searchTerm}%,` +
+        `phone_number_1.ilike.%${searchTerm}%,` +
+        `phone_number_2.ilike.%${searchTerm}%,` +
+        `tracking_id.ilike.%${searchTerm}%,` +
+        `seller.name.ilike.%${searchTerm}%,` +
+        `seller.email.ilike.%${searchTerm}%`
+      );
     }
 
     query = query.order('created_at', { ascending: false });
@@ -851,11 +861,30 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
         sellerMap[seller.id] = seller;
       });
       
-      const ordersWithSellerName = (simpleOrders || []).map(order => ({
+      let ordersWithSellerName = (simpleOrders || []).map(order => ({
         ...order,
         seller_name: sellerMap[order.seller_id]?.name || 'Unknown',
         seller_email: sellerMap[order.seller_id]?.email || null
       }));
+
+      // Apply search filter manually for seller name/email if original query failed
+      if (search) {
+        const searchTermLower = search.trim().toLowerCase();
+        ordersWithSellerName = ordersWithSellerName.filter(order => {
+          const fields = [
+            order.seller_reference_number,
+            order.customer_name,
+            order.phone_number_1,
+            order.phone_number_2,
+            order.tracking_id,
+            order.seller_name,
+            order.seller_email
+          ];
+          return fields.some(field =>
+            typeof field === 'string' && field.toLowerCase().includes(searchTermLower)
+          );
+        });
+      }
       
       return res.json({ orders: ordersWithSellerName });
     }
@@ -872,11 +901,29 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     }
 
     // Map orders to include seller_name
-    const ordersWithSellerName = (orders || []).map(order => ({
+    let ordersWithSellerName = (orders || []).map(order => ({
       ...order,
       seller_name: order.seller?.name || 'Unknown',
       seller_email: order.seller?.email || null
     }));
+
+    if (search) {
+      const searchTermLower = search.trim().toLowerCase();
+      ordersWithSellerName = ordersWithSellerName.filter(order => {
+        const fields = [
+          order.seller_reference_number,
+          order.customer_name,
+          order.phone_number_1,
+          order.phone_number_2,
+          order.tracking_id,
+          order.seller_name,
+          order.seller_email
+        ];
+        return fields.some(field =>
+          typeof field === 'string' && field.toLowerCase().includes(searchTermLower)
+        );
+      });
+    }
 
     res.json({ orders: ordersWithSellerName });
   } catch (error) {
@@ -1191,9 +1238,10 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
 
       try {
         // Extract data from row (support multiple column name formats)
+        // Support for old orders with all columns
         const sellerRef = row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || row['Order Number'] || '';
         const productCodes = row['Product Codes'] || row['product_codes'] || row['Product Code'] || row['Products'] || '';
-        const customerName = row['Customer Name'] || row['customer_name'] || row['Name'] || '';
+        const customerName = row['Customer Name'] || row['customer_name'] || row['Name'] || row['Customer'] || '';
         const phone1 = row['Phone Number 1'] || row['phone_number_1'] || row['Phone'] || row['Phone 1'] || '';
         const phone2 = row['Phone Number 2'] || row['phone_number_2'] || row['Phone 2'] || '';
         const address = row['Customer Address'] || row['customer_address'] || row['Address'] || '';
@@ -1203,11 +1251,34 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
         const sellerPrice = row['Seller Price'] || row['seller_price'] || row['Price'] || '0';
         const shipperPrice = row['Shipper Price'] || row['shipper_price'] || '';
         const deliveryCharge = row['Delivery Charge'] || row['delivery_charge'] || row['DC'] || '0';
+        
+        // Additional columns for old orders
+        const trackingId = row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || row['Tracking ID'] || '';
+        const status = row['Status'] || row['status'] || 'pending';
+        const isPaid = row['Paid'] || row['paid'] || row['Is Paid'] || row['is_paid'] || false;
+        const profit = row['Profit'] || row['profit'] || null; // Direct profit from file (optional)
 
         // Validate required fields
         if (!sellerRef || !productCodes || !customerName || !phone1 || !address || !city) {
-          errors.push({ row: i + 2, error: 'Missing required fields' });
+          errors.push({ row: i + 2, error: 'Missing required fields (Ref #, Products, Customer, Phone, Address, City required)' });
           continue;
+        }
+
+        // Normalize status
+        const normalizedStatus = String(status).toLowerCase().trim();
+        const validStatuses = ['pending', 'confirmed', 'delivered', 'return', 'returned', 'paid'];
+        const finalStatus = validStatuses.includes(normalizedStatus) ? normalizedStatus : 'pending';
+
+        // Handle is_paid - support multiple formats
+        let finalIsPaid = false;
+        if (isPaid !== false && isPaid !== null && isPaid !== '') {
+          if (typeof isPaid === 'string') {
+            finalIsPaid = ['true', 'yes', '1', 'paid', 'y'].includes(isPaid.toLowerCase().trim());
+          } else if (typeof isPaid === 'number') {
+            finalIsPaid = isPaid === 1;
+          } else {
+            finalIsPaid = Boolean(isPaid);
+          }
         }
 
         // Check if order already exists
@@ -1223,34 +1294,49 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
           continue;
         }
 
-        // Calculate profit
+        // Calculate profit - use direct profit if provided, otherwise calculate
         const sellerPriceNum = parseFloat(sellerPrice || 0);
         const shipperPriceNum = shipperPrice ? parseFloat(shipperPrice) : 0;
         const deliveryChargeNum = parseFloat(deliveryCharge || 0);
         const totalCost = shipperPriceNum + deliveryChargeNum;
-        const profit = sellerPriceNum - totalCost;
+        const finalProfit = profit !== null && profit !== '' ? parseFloat(profit) : (sellerPriceNum - totalCost);
+
+        // Create order with all fields including old order data
+        const orderData = {
+          seller_id: sellerId,
+          seller_reference_number: String(sellerRef),
+          product_codes: productCodes.toUpperCase(),
+          customer_name: customerName,
+          phone_number_1: phone1,
+          phone_number_2: phone2 || null,
+          customer_address: address,
+          city: city,
+          courier_service: courier || null,
+          qty: parseInt(qty) || 1,
+          seller_price: sellerPriceNum,
+          shipper_price: shipperPrice ? shipperPriceNum : null,
+          delivery_charge: deliveryChargeNum,
+          profit: finalProfit,
+          status: finalStatus,
+          is_paid: finalIsPaid
+        };
+
+        // Add tracking ID if provided
+        if (trackingId && trackingId.trim()) {
+          orderData.tracking_id = trackingId.trim();
+        }
+
+        // Handle inventory for delivered/confirmed orders
+        if (['confirmed', 'delivered'].includes(finalStatus)) {
+          const productCodesArray = parseProductCodes(productCodes);
+          const orderQty = parseInt(qty) || 1;
+          await reduceInventory(sellerId, productCodesArray, orderQty);
+        }
 
         // Create order
         const { error: insertError } = await supabase
           .from('orders')
-          .insert({
-            seller_id: sellerId,
-            seller_reference_number: String(sellerRef),
-            product_codes: productCodes.toUpperCase(),
-            customer_name: customerName,
-            phone_number_1: phone1,
-            phone_number_2: phone2 || null,
-            customer_address: address,
-            city: city,
-            courier_service: courier || null,
-            qty: parseInt(qty) || 1,
-            seller_price: sellerPriceNum,
-            shipper_price: shipperPrice ? shipperPriceNum : null,
-            delivery_charge: deliveryChargeNum,
-            profit: profit,
-            status: 'pending',
-            is_paid: false
-          });
+          .insert(orderData);
 
         if (insertError) {
           errors.push({ row: i + 2, error: insertError.message });
@@ -1277,24 +1363,69 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
 // Get bulk upload template
 app.get('/api/orders/bulk-upload-template', authenticateToken, (req, res) => {
   try {
+    // Create template with all columns in proper order
     const template = [
       {
-        'Reference Number': '1',
-        'Product Codes': 'KS1,KS2',
-        'Customer Name': 'John Doe',
-        'Phone Number 1': '03001234567',
+        'Ref #': '1',
+        'Customer': 'John Doe',
+        'Phone': '03001234567',
         'Phone Number 2': '03001234568',
-        'Customer Address': '123 Main St',
+        'Address': '123 Main St',
         'City': 'Lahore',
-        'Courier Service': 'TCS',
-        'Qty': '2',
+        'Courier': 'TCS',
+        'Products': 'KS1,KS2',
         'Seller Price': '5000',
         'Shipper Price': '3000',
-        'Delivery Charge': '200'
+        'DC': '200',
+        'Profit': '1800',
+        'Tracking ID': 'TRACK123456',
+        'Status': 'pending',
+        'Paid': 'false'
       }
     ];
 
-    const ws = XLSX.utils.json_to_sheet(template);
+    // Create worksheet with all columns
+    const ws = XLSX.utils.json_to_sheet(template, {
+      header: [
+        'Ref #',
+        'Customer',
+        'Phone',
+        'Phone Number 2',
+        'Address',
+        'City',
+        'Courier',
+        'Products',
+        'Seller Price',
+        'Shipper Price',
+        'DC',
+        'Profit',
+        'Tracking ID',
+        'Status',
+        'Paid'
+      ],
+      skipHeader: false
+    });
+    
+    // Set column widths for better visibility
+    const colWidths = [
+      { wch: 10 }, // Ref #
+      { wch: 20 }, // Customer
+      { wch: 15 }, // Phone
+      { wch: 15 }, // Phone Number 2
+      { wch: 30 }, // Address
+      { wch: 15 }, // City
+      { wch: 12 }, // Courier
+      { wch: 20 }, // Products
+      { wch: 12 }, // Seller Price
+      { wch: 12 }, // Shipper Price
+      { wch: 10 }, // DC
+      { wch: 12 }, // Profit
+      { wch: 15 }, // Tracking ID
+      { wch: 12 }, // Status
+      { wch: 8 }   // Paid
+    ];
+    ws['!cols'] = colWidths;
+    
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Orders Template');
     
@@ -5201,6 +5332,491 @@ app.post('/api/orders/bulk-return-scan', authenticateToken, async (req, res) => 
     res.status(500).json({ error: 'Failed to process bulk return scan' });
   }
 });
+
+// ============================================
+// DIGI PORTAL INTEGRATION - AUTOMATIC STATUS SYNC
+// ============================================
+
+/**
+ * Get Digi portal credentials for a seller
+ * @param {string} sellerId - Seller ID
+ * @param {string} sellerEmail - Seller email
+ * @returns {Object} { username, password, baseUrl }
+ */
+const getDigiPortalCredentials = (sellerId, sellerEmail) => {
+  // Check if this is Ahsan seller (you can customize this check)
+  const isAhsanSeller = sellerEmail && sellerEmail.toLowerCase().includes('ahsan');
+  
+  if (isAhsanSeller) {
+    return {
+      username: process.env.DIGI_PORTAL_AHSAN_USERNAME || '',
+      password: process.env.DIGI_PORTAL_AHSAN_PASSWORD || '',
+      baseUrl: process.env.DIGI_PORTAL_BASE_URL || 'https://digi-portal.com/api'
+    };
+  } else {
+    // Default credentials for other sellers
+    return {
+      username: process.env.DIGI_PORTAL_USERNAME || '',
+      password: process.env.DIGI_PORTAL_PASSWORD || '',
+      baseUrl: process.env.DIGI_PORTAL_BASE_URL || 'https://digi-portal.com/api'
+    };
+  }
+};
+
+/**
+ * Login to Digi portal and get session token
+ * @param {Object} credentials - { username, password, baseUrl }
+ * @returns {string|null} Session token or null
+ */
+const loginToDigiPortal = async (credentials) => {
+  try {
+    if (!credentials.username || !credentials.password || !credentials.baseUrl) {
+      console.error('[Digi Portal] Missing credentials');
+      return null;
+    }
+
+    const response = await axios.post(`${credentials.baseUrl}/login`, {
+      username: credentials.username,
+      password: credentials.password
+    }, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Adjust based on actual Digi portal API response structure
+    return response.data?.token || response.data?.access_token || response.data?.session_id || null;
+  } catch (error) {
+    console.error('[Digi Portal] Login error:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Detect courier service from tracking ID (TCS, MNP, Leopard, etc.)
+ * @param {string} trackingId - Tracking ID
+ * @returns {string} Courier service name or 'unknown'
+ */
+const detectCourierService = (trackingId) => {
+  if (!trackingId) return 'unknown';
+  
+  const id = trackingId.toUpperCase().trim();
+  
+  // TCS tracking IDs usually start with specific patterns
+  if (id.startsWith('TCS') || id.startsWith('1') || /^[0-9]{10,}$/.test(id)) {
+    return 'TCS';
+  }
+  
+  // MNP tracking IDs
+  if (id.startsWith('MNP') || id.startsWith('M')) {
+    return 'MNP';
+  }
+  
+  // Leopard tracking IDs
+  if (id.startsWith('LEO') || id.startsWith('LP') || id.startsWith('L')) {
+    return 'Leopard';
+  }
+  
+  // Add more courier detection patterns as needed
+  // You can customize this based on your tracking ID patterns
+  
+  return 'unknown';
+};
+
+/**
+ * Fetch tracking status from Digi portal
+ * Digi portal is a unified portal that tracks multiple courier services (TCS, MNP, Leopard, etc.)
+ * @param {string} trackingId - Tracking ID
+ * @param {string} courierService - Courier service name (TCS, MNP, Leopard, etc.) - optional
+ * @param {Object} credentials - { username, password, baseUrl }
+ * @returns {Object|null} { status: 'delivered'|'returned', courier: string, ... } or null
+ */
+const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, credentials) => {
+  try {
+    if (!trackingId || !trackingId.trim()) {
+      return null;
+    }
+
+    // Auto-detect courier if not provided
+    const detectedCourier = courierService || detectCourierService(trackingId);
+
+    // Login first to get session token
+    const token = await loginToDigiPortal(credentials);
+    if (!token) {
+      console.error('[Digi Portal] Failed to login');
+      return null;
+    }
+
+    // Fetch tracking status from Digi portal
+    // Digi portal supports multiple courier services (TCS, MNP, Leopard, etc.)
+    // Adjust the endpoint based on actual Digi portal API structure
+    // Option 1: Unified endpoint (recommended if Digi portal has one)
+    let response;
+    try {
+      response = await axios.get(`${credentials.baseUrl}/tracking/${trackingId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+    } catch (error) {
+      // If unified endpoint fails, try courier-specific endpoint
+      if (detectedCourier !== 'unknown') {
+        try {
+          response = await axios.get(`${credentials.baseUrl}/tracking/${detectedCourier.toLowerCase()}/${trackingId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          });
+        } catch (courierError) {
+          throw error; // Throw original error
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    // Adjust based on actual Digi portal API response structure
+    // Common response formats:
+    // { status: 'delivered', courier: 'TCS', ... }
+    // { order_status: 'delivered', courier_service: 'TCS', ... }
+    // { delivery_status: 'delivered', ... }
+    const status = response.data?.status || 
+                   response.data?.order_status || 
+                   response.data?.delivery_status ||
+                   response.data?.current_status;
+    
+    if (!status) {
+      return null;
+    }
+
+    // Normalize status to match our system
+    const normalizedStatus = String(status).toLowerCase().trim();
+    
+    // Map common status variations
+    let finalStatus = normalizedStatus;
+    if (normalizedStatus.includes('delivered') || normalizedStatus === 'delivery') {
+      finalStatus = 'delivered';
+    } else if (normalizedStatus.includes('return') || normalizedStatus === 'rtn') {
+      finalStatus = 'returned';
+    }
+    
+    // Only return if status is 'delivered' or 'returned'
+    if (finalStatus === 'delivered' || finalStatus === 'returned') {
+      return {
+        status: finalStatus,
+        courier: response.data?.courier || response.data?.courier_service || detectedCourier,
+        rawData: response.data
+      };
+    }
+
+    return null;
+  } catch (error) {
+    // Don't log error if tracking not found (404) - it's normal
+    if (error.response?.status !== 404) {
+      console.error(`[Digi Portal] Error fetching status for ${trackingId} (${courierService || 'auto'}):`, error.message);
+    }
+    return null;
+  }
+};
+
+/**
+ * Sync order status from Digi portal for a specific order
+ * @param {string} orderId - Order ID
+ * @param {string} trackingId - Tracking ID
+ * @param {string} sellerId - Seller ID
+ * @param {string} sellerEmail - Seller email
+ * @param {string} courierService - Courier service (TCS, MNP, Leopard, etc.) - optional
+ * @returns {Object} { updated: boolean, status: string|null, error: string|null }
+ */
+const syncOrderStatusFromDigiPortal = async (orderId, trackingId, sellerId, sellerEmail, courierService = null) => {
+  try {
+    if (!trackingId || !trackingId.trim()) {
+      return { updated: false, status: null, error: 'No tracking ID' };
+    }
+
+    // Get credentials for this seller
+    const credentials = getDigiPortalCredentials(sellerId, sellerEmail);
+    
+    // Get order to check courier service if not provided
+    if (!courierService) {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('courier_service')
+        .eq('id', orderId)
+        .single();
+      
+      courierService = order?.courier_service || null;
+    }
+    
+    // Fetch status from Digi portal (supports TCS, MNP, Leopard, etc.)
+    const digiStatus = await fetchTrackingStatusFromDigiPortal(trackingId, courierService, credentials);
+    
+    if (!digiStatus) {
+      return { updated: false, status: null, error: 'Status not found or not delivered/returned' };
+    }
+
+    // Get current order status
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, product_codes, qty, seller_id')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return { updated: false, status: null, error: 'Order not found' };
+    }
+
+    const currentStatus = (order.status || '').toLowerCase().trim();
+    const newStatus = digiStatus.status;
+
+    // Only update if status changed and is delivered or returned
+    if (currentStatus !== newStatus && (newStatus === 'delivered' || newStatus === 'returned')) {
+      // Handle inventory changes
+      const productCodesArray = parseProductCodes(order.product_codes || '');
+      const orderQty = parseInt(order.qty || 1);
+      let inventoryUpdate = null;
+
+      // Status changed to delivered - reduce inventory
+      if (!['confirmed', 'delivered'].includes(currentStatus) && newStatus === 'delivered') {
+        inventoryUpdate = await reduceInventory(order.seller_id, productCodesArray, orderQty);
+      }
+      
+      // Status changed to returned - add inventory back
+      if (['confirmed', 'delivered'].includes(currentStatus) && newStatus === 'returned') {
+        inventoryUpdate = await addInventoryBack(order.seller_id, productCodesArray, orderQty);
+      }
+
+      // Update order status
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (updateError) {
+        return { updated: false, status: null, error: updateError.message };
+      }
+
+      return { 
+        updated: true, 
+        status: newStatus, 
+        error: null,
+        inventoryUpdate 
+      };
+    }
+
+    return { updated: false, status: currentStatus, error: 'Status already up to date' };
+  } catch (error) {
+    console.error('[Digi Portal] Sync error:', error);
+    return { updated: false, status: null, error: error.message };
+  }
+};
+
+/**
+ * Sync all pending orders with tracking IDs from Digi portal
+ * @param {string|null} sellerId - Optional seller ID to filter
+ * @returns {Object} { total: number, updated: number, errors: number, details: Array }
+ */
+const syncAllOrdersFromDigiPortal = async (sellerId = null) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return { total: 0, updated: 0, errors: 0, details: [], error: 'Database not configured' };
+    }
+
+    // Get all orders with tracking IDs that are not delivered or returned
+    // Include courier_service to help with tracking
+    let query = supabase
+      .from('orders')
+      .select('id, tracking_id, status, seller_id, product_codes, qty, courier_service')
+      .not('tracking_id', 'is', null)
+      .neq('tracking_id', '')
+      .in('status', ['pending', 'confirmed']); // Only check pending/confirmed orders
+
+    if (sellerId) {
+      query = query.eq('seller_id', sellerId);
+    }
+
+    const { data: orders, error: ordersError } = await query;
+
+    if (ordersError) {
+      throw ordersError;
+    }
+
+    if (!orders || orders.length === 0) {
+      return { total: 0, updated: 0, errors: 0, details: [] };
+    }
+
+    // Get seller emails for credentials
+    const sellerIds = [...new Set(orders.map(o => o.seller_id).filter(Boolean))];
+    const { data: sellers } = await supabase
+      .from('users')
+      .select('id, email')
+      .in('id', sellerIds);
+
+    const sellersMap = (sellers || []).reduce((acc, seller) => {
+      acc[seller.id] = seller.email;
+      return acc;
+    }, {});
+
+    const results = {
+      total: orders.length,
+      updated: 0,
+      errors: 0,
+      details: []
+    };
+
+    // Process orders in batches to avoid overwhelming the API
+    const batchSize = 10;
+    for (let i = 0; i < orders.length; i += batchSize) {
+      const batch = orders.slice(i, i + batchSize);
+      
+      await Promise.all(batch.map(async (order) => {
+        const sellerEmail = sellersMap[order.seller_id] || '';
+        const result = await syncOrderStatusFromDigiPortal(
+          order.id,
+          order.tracking_id,
+          order.seller_id,
+          sellerEmail,
+          order.courier_service // Pass courier service (TCS, MNP, Leopard, etc.)
+        );
+
+        if (result.updated) {
+          results.updated++;
+          results.details.push({
+            orderId: order.id,
+            trackingId: order.tracking_id,
+            status: result.status,
+            success: true
+          });
+        } else if (result.error && result.error !== 'Status not found or not delivered/returned' && result.error !== 'Status already up to date') {
+          results.errors++;
+          results.details.push({
+            orderId: order.id,
+            trackingId: order.tracking_id,
+            error: result.error,
+            success: false
+          });
+        }
+      }));
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < orders.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('[Digi Portal] Sync all orders error:', error);
+    return { total: 0, updated: 0, errors: 0, details: [], error: error.message };
+  }
+};
+
+// API Endpoint: Manual sync from Digi portal
+app.post('/api/orders/sync-digi-portal', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Only admins can sync from Digi portal.' });
+    }
+
+    const { seller_id } = req.body; // Optional: filter by seller
+
+    const results = await syncAllOrdersFromDigiPortal(seller_id || null);
+
+    res.json({
+      success: true,
+      message: `Sync completed: ${results.updated} orders updated, ${results.errors} errors`,
+      ...results
+    });
+  } catch (error) {
+    console.error('Error syncing from Digi portal:', error);
+    res.status(500).json({ error: 'Failed to sync from Digi portal', details: error.message });
+  }
+});
+
+// API Endpoint: Sync single order by tracking ID
+app.post('/api/orders/sync-digi-portal/:trackingId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Only admins can sync from Digi portal.' });
+    }
+
+    const { trackingId } = req.params;
+
+    // Find order by tracking ID
+    const { data: orders, error: findError } = await supabase
+      .from('orders')
+      .select('id, tracking_id, seller_id, courier_service')
+      .eq('tracking_id', trackingId)
+      .limit(1);
+
+    if (findError || !orders || orders.length === 0) {
+      return res.status(404).json({ error: 'Order not found with this tracking ID' });
+    }
+
+    const order = orders[0];
+
+    // Get seller email
+    const { data: seller } = await supabase
+      .from('users')
+      .select('email')
+      .eq('id', order.seller_id)
+      .single();
+
+    const result = await syncOrderStatusFromDigiPortal(
+      order.id,
+      order.tracking_id,
+      order.seller_id,
+      seller?.email || '',
+      order.courier_service // Pass courier service (TCS, MNP, Leopard, etc.)
+    );
+
+    if (result.error) {
+      return res.status(400).json({ error: result.error, ...result });
+    }
+
+    res.json({
+      success: result.updated,
+      message: result.updated ? 'Order status updated successfully' : 'Status already up to date',
+      ...result
+    });
+  } catch (error) {
+    console.error('Error syncing order from Digi portal:', error);
+    res.status(500).json({ error: 'Failed to sync order from Digi portal', details: error.message });
+  }
+});
+
+// Scheduled job: Automatically sync orders from Digi portal every 15 minutes
+// You can adjust the cron schedule: '*/15 * * * *' = every 15 minutes
+// Format: minute hour day month weekday
+// Examples:
+//   '*/15 * * * *' = every 15 minutes
+//   '*/30 * * * *' = every 30 minutes
+//   '0 */1 * * *' = every hour
+const DIGI_PORTAL_SYNC_ENABLED = process.env.DIGI_PORTAL_AUTO_SYNC_ENABLED === 'true';
+const DIGI_PORTAL_SYNC_SCHEDULE = process.env.DIGI_PORTAL_SYNC_SCHEDULE || '*/15 * * * *'; // Default: every 15 minutes
+
+if (DIGI_PORTAL_SYNC_ENABLED) {
+  cron.schedule(DIGI_PORTAL_SYNC_SCHEDULE, async () => {
+    console.log('[Digi Portal] Starting automatic sync...');
+    try {
+      const results = await syncAllOrdersFromDigiPortal(null);
+      console.log(`[Digi Portal] Sync completed: ${results.updated} orders updated, ${results.errors} errors out of ${results.total} total`);
+    } catch (error) {
+      console.error('[Digi Portal] Automatic sync error:', error);
+    }
+  });
+  console.log(`[Digi Portal] Automatic sync enabled. Schedule: ${DIGI_PORTAL_SYNC_SCHEDULE}`);
+} else {
+  console.log('[Digi Portal] Automatic sync is disabled. Set DIGI_PORTAL_AUTO_SYNC_ENABLED=true to enable.');
+}
 
 // ============================================
 // PURCHASING SYSTEM API ENDPOINTS

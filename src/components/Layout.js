@@ -224,30 +224,30 @@ const Layout = ({ children }) => {
   };
 
   const sellerMenuItems = [
-    { path: '/seller', label: 'Dashboard', icon: '📊', bgColor: 'bg-blue-50', textColor: 'text-blue-700', hoverBg: 'hover:bg-blue-100' },
-    { path: '/orders', label: 'My Orders', icon: '📦', bgColor: 'bg-green-50', textColor: 'text-green-700', hoverBg: 'hover:bg-green-100' },
-    { path: '/invoices', label: 'Billing', icon: '🧾', bgColor: 'bg-purple-50', textColor: 'text-purple-700', hoverBg: 'hover:bg-purple-100' },
-    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
-    { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-orange-50', textColor: 'text-orange-700', hoverBg: 'hover:bg-orange-100' },
+    { path: '/seller', label: 'Dashboard', icon: '📊', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/orders', label: 'My Orders', icon: '📦', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/invoices', label: 'Billing', icon: '🧾', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
   ];
 
   const adminMenuItems = [
-    { path: '/admin', label: 'Dashboard', icon: '📊', bgColor: 'bg-blue-50', textColor: 'text-blue-700', hoverBg: 'hover:bg-blue-100' },
-    { path: '/orders', label: 'Orders', icon: '📦', bgColor: 'bg-green-50', textColor: 'text-green-700', hoverBg: 'hover:bg-green-100' },
-    { path: '/products', label: 'Products', icon: '🛍️', bgColor: 'bg-pink-50', textColor: 'text-pink-700', hoverBg: 'hover:bg-pink-100' },
-    { path: '/inventory', label: 'Inventory', icon: '📋', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700', hoverBg: 'hover:bg-yellow-100' },
-    { path: '/invoices', label: 'Invoices', icon: '🧾', bgColor: 'bg-purple-50', textColor: 'text-purple-700', hoverBg: 'hover:bg-purple-100' },
-    { path: '/invoice-match', label: 'Invoice Match', icon: '🔗', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700', hoverBg: 'hover:bg-indigo-100' },
-    { path: '/generate-bill', label: 'Generate Bill', icon: '🧾', bgColor: 'bg-cyan-50', textColor: 'text-cyan-700', hoverBg: 'hover:bg-cyan-100' },
-    { path: '/purchasing', label: 'Purchasing', icon: '🛒', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700', hoverBg: 'hover:bg-emerald-100' },
-    { path: '/expenses-tracker', label: 'Expenses Tracker', icon: '💰', bgColor: 'bg-rose-50', textColor: 'text-rose-700', hoverBg: 'hover:bg-rose-100' },
-    { path: '/sellers', label: 'Sellers', icon: '👥', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
-    { path: '/automation', label: 'Automation', icon: '⚙️', bgColor: 'bg-gray-50', textColor: 'text-gray-700', hoverBg: 'hover:bg-gray-100' },
-    { path: '/return-management', label: 'Return Management', icon: '↩️', bgColor: 'bg-orange-50', textColor: 'text-orange-700', hoverBg: 'hover:bg-orange-100' },
-    { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-amber-50', textColor: 'text-amber-700', hoverBg: 'hover:bg-amber-100' },
-    { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-teal-50', textColor: 'text-teal-700', hoverBg: 'hover:bg-teal-100' },
-    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-700', hoverBg: 'hover:bg-red-100' },
-    { path: '/settings', label: 'Settings', icon: '⚙️', bgColor: 'bg-gray-50', textColor: 'text-gray-700', hoverBg: 'hover:bg-gray-100' },
+    { path: '/admin', label: 'Dashboard', icon: '📊', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/orders', label: 'Orders', icon: '📦', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/products', label: 'Products', icon: '🛍️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/inventory', label: 'Inventory', icon: '📋', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/invoices', label: 'Invoices', icon: '🧾', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/invoice-match', label: 'Invoice Match', icon: '🔗', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/generate-bill', label: 'Generate Bill', icon: '🧾', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/purchasing', label: 'Purchasing', icon: '🛒', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/expenses-tracker', label: 'Expenses Tracker', icon: '💰', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/sellers', label: 'Sellers', icon: '👥', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/automation', label: 'Automation', icon: '⚙️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/return-management', label: 'Return Management', icon: '↩️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/settings', label: 'Settings', icon: '⚙️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
   ];
 
   const menuItems = user?.role === 'admin' ? adminMenuItems : sellerMenuItems;
@@ -301,8 +301,8 @@ const Layout = ({ children }) => {
               to={item.path}
               className={`flex items-center ${sidebarOpen ? 'px-2 sm:px-3 md:px-4' : 'px-1.5 lg:px-2 justify-center lg:justify-center'} py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-xs sm:text-sm md:text-base ${
                 isActive(item.path)
-                  ? `${item.bgColor || 'bg-blue-100'} ${item.textColor || 'text-blue-700'} font-semibold`
-                  : `${item.textColor || 'text-blue-600'} ${item.hoverBg || 'hover:bg-blue-50'}`
+                  ? `${item.bgColor || 'bg-blue-600'} ${item.textColor || 'text-white'} font-semibold`
+                  : `bg-blue-500 ${item.textColor || 'text-white'} ${item.hoverBg || 'hover:bg-blue-600 hover:text-white'}`
               }`}
               title={!sidebarOpen ? item.label : ''}
             >
