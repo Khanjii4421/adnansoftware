@@ -4132,6 +4132,70 @@ app.delete('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // Bulk upload ledger customers
+// Get customer bulk upload template
+app.get('/api/ledger/customers/bulk-upload-template', authenticateToken, (req, res) => {
+  try {
+    // Create comprehensive template with all supported columns
+    const template = [
+      {
+        'Name': 'Ahmed Khan',
+        'Phone': '03001234567',
+        'Address': '123 Main Street, Gulberg',
+        'City': 'Lahore',
+        'CNIC': '35202-1234567-1'
+      },
+      {
+        'Name': 'Fatima Ali',
+        'Phone': '03009876543',
+        'Address': '456 Model Town',
+        'City': 'Karachi',
+        'CNIC': '42101-9876543-2'
+      },
+      {
+        'Name': 'Hassan Raza',
+        'Phone': '03111234567',
+        'Address': '789 Faisalabad Road',
+        'City': 'Faisalabad',
+        'CNIC': ''
+      }
+    ];
+
+    // Create worksheet with all columns in proper order
+    const ws = XLSX.utils.json_to_sheet(template, {
+      header: [
+        'Name',
+        'Phone',
+        'Address',
+        'City',
+        'CNIC'
+      ],
+      skipHeader: false
+    });
+    
+    // Set column widths for better visibility
+    const colWidths = [
+      { wch: 25 }, // Name
+      { wch: 15 }, // Phone
+      { wch: 40 }, // Address
+      { wch: 20 }, // City
+      { wch: 20 }  // CNIC
+    ];
+    ws['!cols'] = colWidths;
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers Template');
+    
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=customer-bulk-upload-template.xlsx');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error generating customer template:', error);
+    res.status(500).json({ error: 'Failed to generate template' });
+  }
+});
+
 app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
@@ -4161,11 +4225,26 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
       
       try {
         // Extract data from row (support multiple column name formats)
-        const name = row['Name'] || row['name'] || row['Customer Name'] || row['customer_name'] || '';
-        const phone = row['Phone'] || row['phone'] || row['Phone Number'] || row['phone_number'] || '';
-        const address = row['Address'] || row['address'] || row['Customer Address'] || row['customer_address'] || '';
-        const city = row['City'] || row['city'] || '';
-        const cnic = row['CNIC'] || row['cnic'] || row['CNIC Number'] || row['cnic_number'] || '';
+        // Name variations
+        const name = row['Name'] || row['name'] || row['Customer Name'] || row['customer_name'] || 
+                     row['Customer'] || row['customer'] || row['Full Name'] || row['full_name'] || '';
+        
+        // Phone variations
+        const phone = row['Phone'] || row['phone'] || row['Phone Number'] || row['phone_number'] || 
+                      row['Mobile'] || row['mobile'] || row['Contact'] || row['contact'] || 
+                      row['Phone No'] || row['phone_no'] || '';
+        
+        // Address variations
+        const address = row['Address'] || row['address'] || row['Customer Address'] || row['customer_address'] || 
+                        row['Street'] || row['street'] || row['Location'] || row['location'] || '';
+        
+        // City variations
+        const city = row['City'] || row['city'] || row['Town'] || row['town'] || '';
+        
+        // CNIC variations
+        const cnic = row['CNIC'] || row['cnic'] || row['CNIC Number'] || row['cnic_number'] || 
+                     row['NIC'] || row['nic'] || row['ID Card'] || row['id_card'] || 
+                     row['National ID'] || row['national_id'] || '';
 
         // Validate required fields
         if (!name || !phone) {
@@ -4216,10 +4295,12 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
     }
 
     res.json({
+      success: true,
       added: totalAdded,
       skipped: totalSkipped,
       total: jsonData.length,
-      errors: errors.slice(0, 10) // Return first 10 errors
+      errors: errors.slice(0, 10), // Return first 10 errors
+      message: `Imported ${totalAdded} customers${totalSkipped > 0 ? `, ${totalSkipped} skipped` : ''}`
     });
   } catch (error) {
     console.error('Error bulk uploading customers:', error);
