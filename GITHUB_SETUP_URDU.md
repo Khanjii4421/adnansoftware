@@ -40,7 +40,10 @@ cd C:\adnansoftware-main
 git init
 
 # GitHub repository add کریں
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git remote add origin https://github.com/Khanjii4421/adnansoftware.git
+
+# یا existing remote update کریں
+git remote set-url origin https://github.com/Khanjii4421/adnansoftware.git
 
 # Branch main پر switch کریں
 git branch -M main
@@ -66,8 +69,12 @@ git commit -m "Initial commit"
 # GitHub پر push کریں
 git push -u origin main
 
-# Username: آپ کا GitHub username
+# Username: Khanjii4421
 # Password: آپ کا Personal Access Token (GitHub password نہیں)
+
+# یا automated script run کریں:
+SETUP_GITHUB_COMPLETE.bat
+AUTO_PUSH_TO_GITHUB.bat
 ```
 
 ---

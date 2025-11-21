@@ -29,13 +29,18 @@ git config --global user.email "khanjii4421@gmail.com"
 git config --list
 ```
 
-### Step 3: Create GitHub Repository
+### Step 3: GitHub Repository
+✅ **Repository already exists!**
+- URL: https://github.com/Khanjii4421/adnansoftware
+- Owner: Khanjii4421
+- User: khalil (khanjii4421@gmail.com)
+
+If you need to create a new repository:
 1. Go to [GitHub.com](https://github.com) and sign in
 2. Click the **"+"** icon in top right → **"New repository"**
-3. Repository name: `adnansoftware` (or your preferred name)
+3. Repository name: `adnansoftware`
 4. Choose **Public** or **Private**
-5. **DO NOT** initialize with README, .gitignore, or license
-6. Click **"Create repository"**
+5. Click **"Create repository"**
 
 ### Step 4: Initialize Git in Your Project (if not already done)
 ```bash
@@ -51,15 +56,18 @@ git init
 
 ### Step 5: Add GitHub Remote Repository
 ```bash
-# Replace YOUR_USERNAME and YOUR_REPO_NAME with your actual GitHub details
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+# Your repository is already configured:
+git remote add origin https://github.com/Khanjii4421/adnansoftware.git
+
+# Or update existing remote:
+git remote set-url origin https://github.com/Khanjii4421/adnansoftware.git
 
 # Verify remote is added
 git remote -v
 
 # Should show:
-# origin  https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git (fetch)
-# origin  https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git (push)
+# origin  https://github.com/Khanjii4421/adnansoftware.git (fetch)
+# origin  https://github.com/Khanjii4421/adnansoftware.git (push)
 ```
 
 ### Step 6: Set Main Branch
@@ -94,8 +102,11 @@ git branch
 #### Step 2: Configure Git to Use Token
 ```bash
 # When pushing, Git will ask for credentials
-# Username: YOUR_GITHUB_USERNAME
+# Username: Khanjii4421
 # Password: PASTE_YOUR_TOKEN_HERE (not your GitHub password)
+
+# Store credentials for convenience:
+git config --global credential.helper wincred
 ```
 
 #### Step 3: Store Credentials (Optional - for convenience)
@@ -176,8 +187,8 @@ git log --oneline
 git push -u origin main
 
 # Enter credentials when prompted:
-# Username: YOUR_GITHUB_USERNAME
-# Password: YOUR_PERSONAL_ACCESS_TOKEN
+# Username: Khanjii4421
+# Password: YOUR_PERSONAL_ACCESS_TOKEN (not your GitHub password)
 ```
 
 ### Method 2: Using the API Endpoint (New Feature)
