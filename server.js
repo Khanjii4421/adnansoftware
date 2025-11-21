@@ -9,6 +9,9 @@ const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 const cron = require('node-cron');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 const axios = require('axios');
 const supabase = require('./config/supabase');
 
@@ -9141,6 +9144,274 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================
+// GIT OPERATIONS
+// ============================================
+
+// Push main branch to GitHub
+// POST: /api/git/push
+// Admin only endpoint to push code to GitHub
+app.post('/api/git/push', authenticateToken, async (req, res) => {
+  try {
+    // Only admin can push to GitHub
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Admin only.' });
+    }
+
+    const { branch = 'main', force = false } = req.body;
+    const output = [];
+    const errors = [];
+
+    console.log(`[Git Push] Starting git push to ${branch} by user ${req.user.email}`);
+
+    // Security: Validate branch name to prevent command injection
+    if (!/^[a-zA-Z0-9_-]+$/.test(branch)) {
+      return res.status(400).json({ error: 'Invalid branch name' });
+    }
+
+    // Get the project root directory
+    const projectRoot = __dirname;
+
+    try {
+      // Step 1: Check if we're in a git repository
+      output.push('Checking git repository...');
+      const { stdout: gitCheck, stderr: gitCheckErr } = await execAsync(
+        'git rev-parse --is-inside-work-tree',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      
+      if (gitCheckErr || !gitCheck.trim()) {
+        throw new Error('Not a git repository');
+      }
+      output.push('✅ Git repository detected');
+
+      // Step 2: Get current branch
+      const { stdout: currentBranch } = await execAsync(
+        'git branch --show-current',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      const currentBranchName = currentBranch.trim();
+      output.push(`Current branch: ${currentBranchName}`);
+
+      // Step 3: Check if there are uncommitted changes
+      const { stdout: status } = await execAsync(
+        'git status --porcelain',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      
+      if (status.trim()) {
+        output.push('⚠️  Warning: Uncommitted changes detected');
+        output.push('Uncommitted files:');
+        output.push(status.trim().split('\n').slice(0, 10).join('\n'));
+      } else {
+        output.push('✅ No uncommitted changes');
+      }
+
+      // Step 4: Fetch latest from remote
+      output.push('Fetching latest from remote...');
+      try {
+        const { stdout: fetchOutput, stderr: fetchErr } = await execAsync(
+          'git fetch origin',
+          { cwd: projectRoot, timeout: 30000 }
+        );
+        if (fetchOutput) output.push(fetchOutput);
+        if (fetchErr && !fetchErr.includes('up to date')) {
+          output.push(`Fetch: ${fetchErr}`);
+        }
+        output.push('✅ Fetch completed');
+      } catch (fetchError) {
+        output.push(`⚠️  Fetch warning: ${fetchError.message}`);
+      }
+
+      // Step 5: Check if branch exists locally
+      const { stdout: branches } = await execAsync(
+        'git branch --list',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      const branchExists = branches.includes(branch);
+      
+      if (!branchExists && currentBranchName !== branch) {
+        // Try to checkout the branch
+        output.push(`Branch ${branch} not found locally, attempting to checkout...`);
+        try {
+          await execAsync(
+            `git checkout ${branch}`,
+            { cwd: projectRoot, timeout: 10000 }
+          );
+          output.push(`✅ Switched to branch ${branch}`);
+        } catch (checkoutError) {
+          throw new Error(`Failed to checkout branch ${branch}: ${checkoutError.message}`);
+        }
+      }
+
+      // Step 6: Push to GitHub
+      output.push(`Pushing ${branch} to origin...`);
+      const pushCommand = force 
+        ? `git push origin ${branch} --force` 
+        : `git push origin ${branch}`;
+      
+      const { stdout: pushOutput, stderr: pushErr } = await execAsync(
+        pushCommand,
+        { cwd: projectRoot, timeout: 60000 }
+      );
+
+      if (pushOutput) {
+        output.push(pushOutput);
+      }
+      if (pushErr) {
+        // Git push often writes to stderr even on success
+        if (pushErr.includes('Everything up-to-date')) {
+          output.push('✅ Everything is up-to-date');
+        } else if (pushErr.includes('error') || pushErr.includes('fatal')) {
+          errors.push(pushErr);
+        } else {
+          output.push(pushErr);
+        }
+      }
+
+      // Step 7: Get final status
+      const { stdout: remoteStatus } = await execAsync(
+        `git status -sb`,
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      output.push('Current status:');
+      output.push(remoteStatus);
+
+      if (errors.length > 0) {
+        console.error('[Git Push] Errors:', errors);
+        return res.status(500).json({
+          success: false,
+          message: 'Git push completed with errors',
+          output: output.join('\n'),
+          errors: errors.join('\n')
+        });
+      }
+
+      console.log(`[Git Push] Successfully pushed ${branch} to GitHub`);
+      res.json({
+        success: true,
+        message: `Successfully pushed ${branch} branch to GitHub`,
+        branch,
+        output: output.join('\n'),
+        pushedBy: req.user.email,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('[Git Push] Error:', error);
+      errors.push(error.message);
+      
+      // Check if it's a git-related error
+      if (error.message.includes('not a git repository')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Not a git repository',
+          message: 'This directory is not a git repository',
+          output: output.join('\n')
+        });
+      }
+
+      if (error.message.includes('timeout')) {
+        return res.status(504).json({
+          success: false,
+          error: 'Git operation timed out',
+          message: 'The git operation took too long to complete',
+          output: output.join('\n')
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Git push failed',
+        message: error.message,
+        output: output.join('\n'),
+        errors: errors.join('\n')
+      });
+    }
+
+  } catch (error) {
+    console.error('[Git Push] Unexpected error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// Get git status
+// GET: /api/git/status
+// Admin only endpoint to check git status
+app.get('/api/git/status', authenticateToken, async (req, res) => {
+  try {
+    // Only admin can check git status
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Admin only.' });
+    }
+
+    const projectRoot = __dirname;
+    const status = {};
+
+    try {
+      // Get current branch
+      const { stdout: currentBranch } = await execAsync(
+        'git branch --show-current',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      status.branch = currentBranch.trim();
+
+      // Get git status
+      const { stdout: gitStatus } = await execAsync(
+        'git status --porcelain',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      status.hasUncommittedChanges = gitStatus.trim().length > 0;
+      status.uncommittedFiles = gitStatus.trim().split('\n').filter(line => line.trim());
+
+      // Get last commit
+      const { stdout: lastCommit } = await execAsync(
+        'git log -1 --pretty=format:"%h - %an, %ar : %s"',
+        { cwd: projectRoot, timeout: 10000 }
+      );
+      status.lastCommit = lastCommit.trim();
+
+      // Get remote status
+      try {
+        const { stdout: remoteStatus } = await execAsync(
+          'git status -sb',
+          { cwd: projectRoot, timeout: 10000 }
+        );
+        status.remoteStatus = remoteStatus.trim();
+      } catch (err) {
+        status.remoteStatus = 'Unable to determine remote status';
+      }
+
+      res.json({
+        success: true,
+        status,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      if (error.message.includes('not a git repository')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Not a git repository'
+        });
+      }
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('[Git Status] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get git status',
+      message: error.message
+    });
+  }
+});
+
 // Serve static files from React app in production
 // Check if build directory exists and NODE_ENV is production
 const buildPath = path.join(__dirname, 'build');
@@ -9258,6 +9529,9 @@ try {
     console.log(`   - GET  /api/ledger/khata`);
     console.log(`   - GET  /api/ledger/khata/pdf`);
     console.log(`   - GET  /api/ledger/khata/whatsapp\n`);
+    console.log(`\n✅ Git Operations Routes Registered (Admin Only):`);
+    console.log(`   - POST /api/git/push (Push main branch to GitHub)`);
+    console.log(`   - GET  /api/git/status (Check git status)\n`);
     if (!isSupabaseConfigured) {
       console.log(`\n⚠️  WARNING: Supabase is not configured!`);
       console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
