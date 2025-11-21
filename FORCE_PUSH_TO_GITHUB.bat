@@ -25,10 +25,18 @@ git branch -M main
 echo ✅ Configured
 echo.
 
-echo [2/3] Adding and committing all changes...
+echo [2/3] Checking for uncommitted changes...
 git add .
-git commit -m "Force push: All local updates - %date% %time%" || echo No new changes
-echo ✅ Committed
+git diff --cached --quiet
+if %errorlevel% neq 0 (
+    git commit -m "Force push: All local updates - %date% %time%"
+    echo ✅ New changes committed
+) else (
+    echo ✅ No new changes, using existing commits
+)
+echo.
+echo Local commits to push:
+git log --oneline origin/main..main 2>nul || git log --oneline -5
 echo.
 
 echo [3/3] Force pushing to GitHub...
