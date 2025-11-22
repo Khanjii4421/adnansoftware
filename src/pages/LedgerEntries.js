@@ -438,15 +438,12 @@ Thank you!`;
             >
               Customers
             </Link>
-<<<<<<< HEAD
             <Link
               to="/ledger/khata"
               className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
             >
               Ledger Khata
             </Link>
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
             <button
               onClick={() => {
                 setShowAddForm(!showAddForm);

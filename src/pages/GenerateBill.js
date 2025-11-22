@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-<<<<<<< HEAD
 import { Link } from 'react-router-dom';
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
@@ -20,11 +17,7 @@ const BRAND_INFO = {
 const GenerateBill = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
-<<<<<<< HEAD
   const [products, setProducts] = useState([{ product_name: '', meters: '', meter_price: '', price: '', discount: '' }]);
-=======
-  const [products, setProducts] = useState([{ product_name: '', meters: '', meter_price: '', price: '' }]);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const [lastGeneratedBill, setLastGeneratedBill] = useState(null);
   const [totalAmount, setTotalAmount] = useState(0);
   const [creditAmount, setCreditAmount] = useState(0);
@@ -193,14 +186,9 @@ const GenerateBill = () => {
       // Calculate price from meter_price * meters
       const meterPrice = parseFloat(product.meter_price || 0);
       const meters = parseFloat(product.meters || 0);
-<<<<<<< HEAD
       const discount = parseFloat(product.discount || 0);
       const calculatedPrice = (meterPrice * meters) - discount;
       total += calculatedPrice > 0 ? calculatedPrice : 0; // Ensure price doesn't go negative
-=======
-      const calculatedPrice = meterPrice * meters;
-      total += calculatedPrice; // No quantity multiplication
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     });
     setTotalAmount(total);
     const credit = parseFloat(creditAmount || 0);
@@ -215,7 +203,6 @@ const GenerateBill = () => {
       [field]: value
     };
     
-<<<<<<< HEAD
     // Auto-calculate price when meter_price, meters, or discount changes
     if (field === 'meter_price' || field === 'meters' || field === 'discount') {
       const meterPrice = parseFloat(updatedProducts[index].meter_price || 0);
@@ -223,24 +210,13 @@ const GenerateBill = () => {
       const discount = parseFloat(updatedProducts[index].discount || 0);
       const calculatedPrice = (meterPrice * meters) - discount;
       updatedProducts[index].price = (calculatedPrice > 0 ? calculatedPrice : 0).toFixed(2);
-=======
-    // Auto-calculate price when meter_price or meters changes
-    if (field === 'meter_price' || field === 'meters') {
-      const meterPrice = parseFloat(updatedProducts[index].meter_price || 0);
-      const meters = parseFloat(updatedProducts[index].meters || 0);
-      updatedProducts[index].price = (meterPrice * meters).toFixed(2);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     }
     
     setProducts(updatedProducts);
   };
 
   const addProduct = () => {
-<<<<<<< HEAD
     setProducts([...products, { product_name: '', meters: '', meter_price: '', price: '', discount: '' }]);
-=======
-    setProducts([...products, { product_name: '', meters: '', meter_price: '', price: '' }]);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   };
 
   const removeProduct = (index) => {
@@ -279,14 +255,10 @@ const GenerateBill = () => {
         customer_id: selectedCustomer,
         bill_number: billNumber,
         bill_date: billDate,
-<<<<<<< HEAD
         products: products.filter(p => p.product_name && (p.price || (p.meter_price && p.meters))).map(p => ({
           ...p,
           discount: p.discount || '0'
         })),
-=======
-        products: products.filter(p => p.product_name && (p.price || (p.meter_price && p.meters))),
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         total_amount: totalAmount,
         credit: creditAmount,
         debit: debitAmount,
@@ -308,14 +280,10 @@ const GenerateBill = () => {
       setLastGeneratedBill({
         bill_number: billNumber,
         customer: selectedCustomerData,
-<<<<<<< HEAD
         products: products.filter(p => p.product_name && (p.price || (p.meter_price && p.meters))).map(p => ({
           ...p,
           discount: p.discount || '0'
         })),
-=======
-        products: products.filter(p => p.product_name && (p.price || (p.meter_price && p.meters))),
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         total_amount: totalAmount,
         credit: creditAmount,
         debit: debitAmount,
@@ -326,11 +294,7 @@ const GenerateBill = () => {
       
       // Reset form
       setSelectedCustomer('');
-<<<<<<< HEAD
       setProducts([{ product_name: '', meters: '', meter_price: '', price: '', discount: '' }]);
-=======
-      setProducts([{ product_name: '', meters: '', meter_price: '', price: '' }]);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       setCreditAmount(0);
       setPaymentMethod('Cash');
       setDescription('');
@@ -928,7 +892,6 @@ const GenerateBill = () => {
   const generateBillHTML = (bill) => {
     return `
 <!DOCTYPE html>
-<<<<<<< HEAD
 <html dir="rtl">
 <head>
   <meta charset="utf-8">
@@ -958,43 +921,12 @@ const GenerateBill = () => {
       body { background: white; padding: 5px; direction: rtl; }
       .bill-container { box-shadow: none; direction: rtl; padding: 10px; }
       @page { margin: 8mm; }
-=======
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Bill ${bill.bill_number}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-    .urdu { font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', 'Jameel Noori Nastaleeq', Arial, sans-serif; direction: rtl; }
-    .bill-container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; }
-    .header h1 { color: #4F46E5; font-size: 32px; margin-bottom: 10px; }
-    .header h1 .urdu { font-size: 28px; }
-    .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-    .info-box { background: #f9f9f9; padding: 15px; border-radius: 8px; }
-    .info-box h3 { color: #4F46E5; font-size: 16px; margin-bottom: 10px; }
-    .info-box h3 .urdu { font-size: 14px; }
-    .products-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .products-table th { background: #4F46E5; color: white; padding: 12px; text-align: left; }
-    .products-table th .urdu { font-size: 0.85em; }
-    .products-table td { padding: 10px; border-bottom: 1px solid #e0e0e0; }
-    .summary-section { margin-top: 30px; border-top: 2px solid #e0e0e0; padding-top: 20px; }
-    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
-    .summary-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #4F46E5; margin-top: 10px; padding-top: 15px; }
-    @media print {
-      body { background: white; }
-      .bill-container { box-shadow: none; }
-      @page { margin: 10mm; }
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     }
   </style>
 </head>
 <body>
   <div class="bill-container">
     <div class="header">
-<<<<<<< HEAD
       <div class="logo-circle">
         <div>AK</div>
       </div>
@@ -1008,30 +940,10 @@ const GenerateBill = () => {
       <p style="font-weight: bold; font-size: 14px; margin-bottom: 4px;">${bill.customer?.name || 'N/A'}</p>
       <p style="font-size: 12px;">فون: ${bill.customer?.phone || 'N/A'}</p>
       <p style="font-size: 12px;">پتہ: ${bill.customer?.address || 'N/A'}${bill.customer?.city ? ', ' + bill.customer.city : ''}</p>
-=======
-      <h1>BILL <span class="urdu">بل</span></h1>
-      <p>Bill Number <span class="urdu">بل نمبر</span>: <strong>${bill.bill_number}</strong></p>
-      <p>Date <span class="urdu">تاریخ</span>: ${new Date(bill.date).toLocaleDateString()}</p>
-    </div>
-    <div class="info-section">
-      <div class="info-box">
-        <h3>Customer Information <span class="urdu">کسٹمر کی معلومات</span></h3>
-        <p><strong>Name <span class="urdu">نام</span>:</strong> ${bill.customer?.name || 'N/A'}</p>
-        <p><strong>Phone <span class="urdu">فون</span>:</strong> ${bill.customer?.phone || 'N/A'}</p>
-        <p><strong>Address <span class="urdu">پتہ</span>:</strong> ${bill.customer?.address || 'N/A'}</p>
-        <p><strong>City <span class="urdu">شہر</span>:</strong> ${bill.customer?.city || 'N/A'}</p>
-      </div>
-      <div class="info-box">
-        <h3>Payment Details <span class="urdu">ادائیگی کی تفصیلات</span></h3>
-        <p><strong>Payment Method <span class="urdu">ادائیگی کا طریقہ</span>:</strong> ${bill.payment_method}</p>
-        <p><strong>Description <span class="urdu">تفصیل</span>:</strong> ${bill.description || 'N/A'}</p>
-      </div>
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     </div>
     <table class="products-table">
       <thead>
         <tr>
-<<<<<<< HEAD
           <th style="width: 40px;">نمبر</th>
           <th style="min-width: 120px;">پروڈکٹ</th>
           <th style="width: 60px;">میٹر</th>
@@ -1063,28 +975,10 @@ const GenerateBill = () => {
           </tr>
         `;
         }).join('')}
-=======
-          <th>Product Name <span class="urdu">پروڈکٹ کا نام</span></th>
-          <th>Meters <span class="urdu">میٹر</span></th>
-          <th>Meter Price <span class="urdu">فی میٹر قیمت</span></th>
-          <th>Amount <span class="urdu">رقم</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${bill.products.map(p => `
-          <tr>
-            <td>${p.product_name}</td>
-            <td>${p.meters || 'N/A'}</td>
-            <td>Rs. ${parseFloat(p.meter_price || 0).toFixed(2)}</td>
-            <td>Rs. ${parseFloat(p.price || 0).toFixed(2)}</td>
-          </tr>
-        `).join('')}
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       </tbody>
     </table>
     <div class="summary-section">
       <div class="summary-row">
-<<<<<<< HEAD
         <span><strong>کل رقم:</strong></span>
         <span class="text-left" style="direction: ltr;"><strong>Rs. ${bill.total_amount.toFixed(2)}</strong></span>
       </div>
@@ -1095,18 +989,6 @@ const GenerateBill = () => {
       <div class="summary-row total">
         <span><strong>باقی رقم:</strong></span>
         <span class="text-left" style="color: red; direction: ltr;"><strong>Rs. ${bill.debit.toFixed(2)}</strong></span>
-=======
-        <span>Total Amount <span class="urdu">کل رقم</span>:</span>
-        <span>Rs. ${bill.total_amount.toFixed(2)}</span>
-      </div>
-      <div class="summary-row">
-        <span>Paid Amount <span class="urdu">ادا شدہ رقم</span>:</span>
-        <span style="color: green;">Rs. ${bill.credit.toFixed(2)}</span>
-      </div>
-      <div class="summary-row total">
-        <span>Remaining Amount <span class="urdu">باقی رقم</span>:</span>
-        <span style="color: red;">Rs. ${bill.debit.toFixed(2)}</span>
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       </div>
     </div>
   </div>
@@ -1143,7 +1025,6 @@ const GenerateBill = () => {
   return (
     <Layout>
         <div className="space-y-4 md:space-y-6 p-4 md:p-6">
-<<<<<<< HEAD
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Generate Bill</h1>
             <div className="flex gap-2">
@@ -1161,9 +1042,6 @@ const GenerateBill = () => {
               </Link>
             </div>
           </div>
-=======
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Generate Bill</h1>
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 
         {message.text && (
           <div className={`p-4 rounded-lg ${
@@ -1373,13 +1251,8 @@ const GenerateBill = () => {
 
               <div className="space-y-3 md:space-y-4">
                 {products.map((product, index) => (
-<<<<<<< HEAD
                   <div key={index} className="grid grid-cols-12 gap-2 md:gap-3 items-end">
                     <div className="col-span-12 md:col-span-3">
-=======
-                  <div key={index} className="grid grid-cols-6 md:grid-cols-12 gap-2 md:gap-4 items-end">
-                    <div className="col-span-6 md:col-span-3">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       <label className="block text-xs text-gray-600 mb-1">Product Name</label>
                       <input
                         type="text"
@@ -1389,11 +1262,7 @@ const GenerateBill = () => {
                         placeholder="Product name"
                       />
                     </div>
-<<<<<<< HEAD
                     <div className="col-span-6 md:col-span-2">
-=======
-                    <div className="col-span-3 md:col-span-2">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       <label className="block text-xs text-gray-600 mb-1">Meters</label>
                       <input
                         type="number"
@@ -1404,11 +1273,7 @@ const GenerateBill = () => {
                         placeholder="7"
                       />
                     </div>
-<<<<<<< HEAD
                     <div className="col-span-6 md:col-span-2">
-=======
-                    <div className="col-span-3 md:col-span-2">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       <label className="block text-xs text-gray-600 mb-1">Meter Price</label>
                       <input
                         type="number"
@@ -1419,7 +1284,6 @@ const GenerateBill = () => {
                         placeholder="1000"
                       />
                     </div>
-<<<<<<< HEAD
                     <div className="col-span-6 md:col-span-2">
                       <label className="block text-xs text-gray-600 mb-1">Discount (Rs.)</label>
                       <input
@@ -1433,18 +1297,6 @@ const GenerateBill = () => {
                       />
                     </div>
                     <div className="col-span-5 md:col-span-2">
-=======
-                    <div className="col-span-3 md:col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1">Price (Auto)</label>
-                      <input
-                        type="text"
-                        readOnly
-                        className="w-full px-2 md:px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                        value={`Rs. ${(parseFloat(product.price || 0)).toFixed(2)}`}
-                      />
-                    </div>
-                    <div className="col-span-2 md:col-span-2">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       <label className="block text-xs text-gray-600 mb-1">Subtotal</label>
                       <input
                         type="text"
@@ -1453,11 +1305,7 @@ const GenerateBill = () => {
                         value={`Rs. ${(parseFloat(product.price || 0)).toFixed(2)}`}
                       />
                     </div>
-<<<<<<< HEAD
                     <div className="col-span-1 md:col-span-1">
-=======
-                    <div className="col-span-1">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       {products.length > 1 && (
                         <button
                           type="button"
@@ -1552,11 +1400,7 @@ const GenerateBill = () => {
                 type="button"
                 onClick={() => {
                   setSelectedCustomer('');
-<<<<<<< HEAD
                   setProducts([{ product_name: '', meters: '', meter_price: '', price: '', discount: '' }]);
-=======
-                  setProducts([{ product_name: '', meters: '', meter_price: '', price: '' }]);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                   setCreditAmount(0);
                   setPaymentMethod('Cash');
                   setDescription('');

@@ -13,7 +13,6 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-<<<<<<< HEAD
     
     // Validate email and password
     if (!email || !email.trim()) {
@@ -59,24 +58,6 @@ const Login = () => {
       setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
-=======
-    setLoading(true);
-
-    const result = await login(email, password);
-
-    if (result.success) {
-      // Auto-redirect based on role
-      if (result.user.role === 'admin') {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate('/seller', { replace: true });
-      }
-    } else {
-      setError(result.error);
-    }
-
-    setLoading(false);
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   };
 
   return (

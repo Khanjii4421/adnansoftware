@@ -127,7 +127,6 @@ const LedgerCustomers = () => {
     }
   };
 
-<<<<<<< HEAD
   const handleDownloadTemplate = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -172,8 +171,6 @@ const LedgerCustomers = () => {
     }
   };
 
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const handleBulkFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -184,11 +181,8 @@ const LedgerCustomers = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-<<<<<<< HEAD
       console.log('[LedgerCustomers] Uploading file:', file.name, 'size:', file.size);
 
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       const response = await axios.post(`${API_URL}/ledger/customers/bulk-upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -196,7 +190,6 @@ const LedgerCustomers = () => {
         }
       });
 
-<<<<<<< HEAD
       console.log('[LedgerCustomers] Upload response:', response.data);
 
       const { added = 0, skipped = 0, total = 0, errors = [], skipReasons = {} } = response.data;
@@ -244,18 +237,6 @@ const LedgerCustomers = () => {
       setMessage({
         type: 'error',
         text: `Upload failed: ${errorMessage}`
-=======
-      setMessage({
-        type: 'success',
-        text: `Successfully imported ${response.data.added || 0} customers`
-      });
-      setShowBulkForm(false);
-      fetchCustomers();
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: error.response?.data?.error || 'Failed to upload file'
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       });
     } finally {
       setUploading(false);
@@ -362,15 +343,12 @@ const LedgerCustomers = () => {
             >
               ← Back to Dashboard
             </Link>
-<<<<<<< HEAD
             <Link
               to="/ledger/khata"
               className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
             >
               Ledger Khata
             </Link>
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
             <button
               onClick={() => {
                 setShowBulkForm(!showBulkForm);
@@ -399,17 +377,10 @@ const LedgerCustomers = () => {
               message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}
           >
-<<<<<<< HEAD
             <div className="whitespace-pre-line text-sm">{message.text}</div>
             <button
               onClick={() => setMessage({ type: '', text: '' })}
               className="float-right font-bold text-lg leading-none"
-=======
-            {message.text}
-            <button
-              onClick={() => setMessage({ type: '', text: '' })}
-              className="float-right font-bold"
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
             >
               ×
             </button>
@@ -499,7 +470,6 @@ const LedgerCustomers = () => {
         {/* Bulk Import Form */}
         {showBulkForm && (
           <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-<<<<<<< HEAD
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Bulk Import Customers</h2>
               <button
@@ -523,10 +493,6 @@ const LedgerCustomers = () => {
                   💡 Tip: Download the template to see the exact format with sample data
                 </p>
               </div>
-=======
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Bulk Import Customers</h2>
-            <div className="space-y-4">
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Upload Excel/CSV File
@@ -539,11 +505,7 @@ const LedgerCustomers = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-<<<<<<< HEAD
                   Supported formats: Excel (.xlsx, .xls) or CSV. Columns: Name, Phone, Address, City, CNIC
-=======
-                  File should have columns: Name, Phone, Address, City, CNIC
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                 </p>
               </div>
               <div className="border-t pt-4">

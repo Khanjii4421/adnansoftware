@@ -9,10 +9,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.21.2",
-<<<<<<< HEAD
     "html5-qrcode": "^2.3.8",
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.3",

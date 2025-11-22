@@ -16,10 +16,7 @@ import ReturnScan from './pages/ReturnScan';
 import LedgerDashboard from './pages/LedgerDashboard';
 import LedgerCustomers from './pages/LedgerCustomers';
 import LedgerEntries from './pages/LedgerEntries';
-<<<<<<< HEAD
 import LedgerKhata from './pages/LedgerKhata';
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 import GenerateBill from './pages/GenerateBill';
 import OutOfStock from './pages/OutOfStock';
 import InvoiceMatch from './pages/InvoiceMatch';
@@ -146,7 +143,6 @@ function App() {
             }
           />
           <Route
-<<<<<<< HEAD
             path="/ledger/khata"
             element={
               <PrivateRoute>
@@ -155,8 +151,6 @@ function App() {
             }
           />
           <Route
-=======
->>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
             path="/generate-bill"
             element={
               <PrivateRoute>
