@@ -88,6 +88,7 @@ app.use((req, res, next) => {
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit for large bulk uploads (up to 1M orders)
+
 });
 
 // Check if Supabase is configured
@@ -96,6 +97,7 @@ const isSupabaseConfigured = supabase && !supabase.__isStub && supabase.isConfig
 // Authentication Middleware with security enhancements
 // This middleware extracts JWT token from Authorization header and sets req.user
 // After this middleware, you can access: req.user.id, req.user.email, req.user.role
+
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -122,8 +124,9 @@ const authenticateToken = (req, res, next) => {
       return res.status(403).json({ error: 'Invalid token payload' });
     }
     
-    // Set req.user - this is how you get the authenticated user in your endpoints
+// Set req.user - this is how you get the authenticated user in your endpoints
     // req.user contains: { id, email, role } from JWT token
+
     req.user = user;
     next();
   });
@@ -433,35 +436,24 @@ const addInventoryBack = async (sellerId, productCodes, qty = 1) => {
 // 2. Get authenticated user from token: const user = req.user; (set by authenticateToken middleware)
 // 3. req.user contains: { id, email, role } from JWT token
 // 4. Use /api/auth/user-password endpoint to get user details with password hash (admin only)
-// ============================================
+//
 
 // Login endpoint
-// How to get user and password from request:
-// - Email and password come from req.body (POST request body)
-// - const { email, password } = req.body;
 app.post('/api/auth/login', async (req, res) => {
   try {
-    console.log('=== LOGIN REQUEST ===');
-    console.log('Request received at:', new Date().toISOString());
-    console.log('Request body:', { email: req.body.email ? '***' : undefined, password: req.body.password ? '***' : undefined });
-    console.log('Request origin:', req.headers.origin);
-    console.log('Request headers:', req.headers);
-    
-    // Get user and password from request body
     const { email, password } = req.body;
 
     if (!email || !password) {
-      console.log('❌ Missing email or password');
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     if (!isSupabaseConfigured) {
-      console.log('❌ Supabase not configured');
+console.log('❌ Supabase not configured');
       return res.status(500).json({ error: 'Database not configured' });
     }
 
     console.log('✅ Supabase configured, querying user...');
-    
+
     // Find user by email
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -469,7 +461,7 @@ app.post('/api/auth/login', async (req, res) => {
       .eq('email', email.toLowerCase().trim())
       .single();
 
-    console.log('User query result:', { 
+console.log('User query result:', { 
       found: !!user, 
       error: userError ? userError.message : null,
       userEmail: user?.email 
@@ -477,12 +469,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (userError || !user) {
       console.log('❌ User not found or query error:', userError?.message);
+
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     // Check if user is active
     if (!user.is_active) {
-      console.log('❌ User account is deactivated');
+console.log('❌ User account is deactivated');
       return res.status(403).json({ error: 'Account is deactivated' });
     }
 
@@ -518,15 +511,15 @@ app.post('/api/auth/login', async (req, res) => {
     };
 
     console.log('✅ Login successful for user:', user.email);
-    console.log('============================');
 
     res.json({
       access_token: token,
       user: userData
     });
   } catch (error) {
-    console.error('❌ Login error:', error);
+console.error('❌ Login error:', error);
     console.error('Error stack:', error.stack);
+
     // Send detailed error in development, generic in production
     const errorMessage = process.env.NODE_ENV === 'development' 
       ? 'Internal server error: ' + error.message
@@ -920,12 +913,13 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   req.setTimeout(120000); // 2 minutes
   
   const startTime = Date.now();
+
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { status, seller_id, search, today_only, is_paid, limit, offset } = req.query;
+const { status, seller_id, search, today_only, is_paid, limit, offset } = req.query;
 
     console.log('[GET /api/orders] User:', { id: req.user.id, role: req.user.role, email: req.user.email });
     console.log('[GET /api/orders] Query params:', { status, seller_id, search, today_only, is_paid, limit, offset });
@@ -944,6 +938,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       .select('*', { count: 'exact' }); // Get count for total
 
     // Filter by seller_id - use index for fast lookup
+
     if (seller_id) {
       console.log('[GET /api/orders] Filtering by seller_id from query:', seller_id);
       query = query.eq('seller_id', seller_id);
@@ -965,7 +960,8 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       }
     }
 
-    // Filter by today only - use index on created_at
+// Filter by today only - use index on created_at
+
     if (today_only === 'true') {
       const today = new Date().toISOString().split('T')[0];
       query = query.gte('created_at', `${today}T00:00:00.000Z`)
@@ -974,6 +970,8 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
 
     // Filter by paid status
     // Only apply filter if is_paid is explicitly provided and not empty
+
+
     if (is_paid !== undefined && is_paid !== null && is_paid !== '') {
       const isPaidValue = is_paid === 'true' || is_paid === true;
       query = query.eq('is_paid', isPaidValue);
@@ -982,16 +980,17 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       console.log('[GET /api/orders] Showing all orders (paid and unpaid)');
     }
 
-    // Search filter - optimized to use indexed columns first
+// Search filter - optimized to use indexed columns first
     if (search) {
       const searchTerm = search.trim();
       // Search in indexed columns: reference number, customer name, phone, tracking_id
+
       query = query.or(
         `seller_reference_number.ilike.%${searchTerm}%,` +
         `customer_name.ilike.%${searchTerm}%,` +
         `phone_number_1.ilike.%${searchTerm}%,` +
         `phone_number_2.ilike.%${searchTerm}%,` +
-        `tracking_id.ilike.%${searchTerm}%`
+`tracking_id.ilike.%${searchTerm}%`
       );
     }
 
@@ -1017,11 +1016,12 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     
     if (sellerIds.length > 0) {
       const { data: sellers, error: sellerError } = await supabase
+
         .from('users')
         .select('id, name, email')
         .in('id', sellerIds);
       
-      if (!sellerError && sellers) {
+if (!sellerError && sellers) {
         sellers.forEach(seller => {
           sellerMap[seller.id] = seller;
         });
@@ -1036,6 +1036,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     }));
 
     // Apply search filter manually for seller name/email if search was provided
+
     if (search) {
       const searchTermLower = search.trim().toLowerCase();
       ordersWithSellerName = ordersWithSellerName.filter(order => {
@@ -1054,7 +1055,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       });
     }
 
-    const processingTime = Date.now() - startTime;
+const processingTime = Date.now() - startTime;
     console.log(`[GET /api/orders] Processed ${ordersWithSellerName.length} orders in ${processingTime}ms`);
 
     // Return orders with metadata
@@ -1076,6 +1077,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       error: 'Failed to fetch orders: ' + (error.message || 'Unknown error'),
       processing_time_ms: processingTime
     });
+
   }
 });
 
@@ -1302,11 +1304,12 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
     }
     
     if (updateData.tracking_id !== undefined) {
-      // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
       const cleanTrackingId = updateData.tracking_id != null && updateData.tracking_id !== '' 
         ? String(updateData.tracking_id).trim().replace(/[\s\-\[\]{}()]/g, '') 
         : null;
       updateFields.tracking_id = cleanTrackingId && cleanTrackingId.length > 0 ? cleanTrackingId : null;
+
     }
     
     if (updateData.is_paid !== undefined) {
@@ -1321,7 +1324,7 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
       updateFields.delivery_charge = parseFloat(updateData.delivery_charge || 0);
     }
 
-    if (updateData.shipper_price !== undefined) {
+if (updateData.shipper_price !== undefined) {
       const shipperPriceValue = updateData.shipper_price === '' || updateData.shipper_price === null ? null : parseFloat(updateData.shipper_price || 0);
       updateFields.shipper_price = shipperPriceValue;
     }
@@ -1364,6 +1367,7 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
 
     // Recalculate profit if prices changed
     if (updateData.seller_price !== undefined || updateData.delivery_charge !== undefined || updateData.shipper_price !== undefined) {
+
       const { data: orderForProfit } = await supabase
         .from('orders')
         .select('seller_price, shipper_price, delivery_charge')
@@ -1374,9 +1378,10 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
         ? parseFloat(updateData.seller_price || 0)
         : parseFloat(orderForProfit?.seller_price || 0);
       
-      const shipperPrice = updateData.shipper_price !== undefined
+const shipperPrice = updateData.shipper_price !== undefined
         ? (updateData.shipper_price === '' || updateData.shipper_price === null ? 0 : parseFloat(updateData.shipper_price || 0))
         : parseFloat(orderForProfit?.shipper_price || 0);
+
       
       const deliveryCharge = updateData.delivery_charge !== undefined
         ? parseFloat(updateData.delivery_charge || 0)
@@ -1450,7 +1455,7 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
 app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), async (req, res) => {
   // Set timeout to 30 minutes for large file processing
   req.setTimeout(1800000); // 30 minutes in milliseconds
-  
+
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -1466,7 +1471,7 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
       return res.status(400).json({ error: 'Seller ID is required' });
     }
 
-    console.log(`[Bulk Upload] Starting upload for seller ${sellerId}, file size: ${(req.file.size / 1024 / 1024).toFixed(2)}MB`);
+console.log(`[Bulk Upload] Starting upload for seller ${sellerId}, file size: ${(req.file.size / 1024 / 1024).toFixed(2)}MB`);
 
     // Parse Excel/CSV file
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
@@ -1478,7 +1483,7 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
       return res.status(400).json({ error: 'No data found in file' });
     }
 
-    console.log(`[Bulk Upload] Parsed ${jsonData.length} rows from file`);
+console.log(`[Bulk Upload] Parsed ${jsonData.length} rows from file`);
 
     const BATCH_SIZE = 500; // Process 500 orders per batch for optimal performance
     const DUPLICATE_CHECK_BATCH_SIZE = 1000; // Check 1000 ref numbers at once
@@ -1490,12 +1495,15 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
 
     // Step 1: Parse and validate all rows, collect valid orders
     console.log(`[Bulk Upload] Step 1: Parsing and validating ${jsonData.length} rows...`);
+
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
       totalProcessed++;
 
       try {
         // Extract data from row (support multiple column name formats)
+
+
         const sellerRef = row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || row['Order Number'] || '';
         const productCodes = row['Product Codes'] || row['product_codes'] || row['Product Code'] || row['Products'] || '';
         const customerName = row['Customer Name'] || row['customer_name'] || row['Name'] || row['Customer'] || '';
@@ -1508,7 +1516,7 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
         const sellerPrice = row['Seller Price'] || row['seller_price'] || row['Price'] || '0';
         const shipperPrice = row['Shipper Price'] || row['shipper_price'] || '';
         const deliveryCharge = row['Delivery Charge'] || row['delivery_charge'] || row['DC'] || '0';
-        // Extract tracking ID and clean it - remove spaces, dashes, and special characters
+// Extract tracking ID and clean it - remove spaces, dashes, and special characters
         const trackingIdRaw = row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || '';
         // Convert to string, handle null/undefined/numbers, and clean
         const trackingId = trackingIdRaw != null ? String(trackingIdRaw).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
@@ -1519,6 +1527,7 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
         // Validate required fields
         if (!sellerRef || !productCodes || !customerName || !phone1 || !address || !city) {
           errors.push({ row: i + 2, error: 'Missing required fields' });
+
           continue;
         }
 
@@ -1527,7 +1536,8 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
         const validStatuses = ['pending', 'confirmed', 'delivered', 'return', 'returned', 'paid'];
         const finalStatus = validStatuses.includes(normalizedStatus) ? normalizedStatus : 'pending';
 
-        // Handle is_paid
+// Handle is_paid
+
         let finalIsPaid = false;
         if (isPaid !== false && isPaid !== null && isPaid !== '') {
           if (typeof isPaid === 'string') {
@@ -1539,12 +1549,15 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
           }
         }
 
-        // Calculate profit
+// Calculate profit
+
         const sellerPriceNum = parseFloat(sellerPrice || 0);
         const shipperPriceNum = shipperPrice ? parseFloat(shipperPrice) : 0;
         const deliveryChargeNum = parseFloat(deliveryCharge || 0);
         const totalCost = shipperPriceNum + deliveryChargeNum;
         const finalProfit = profit !== null && profit !== '' ? parseFloat(profit) : (sellerPriceNum - totalCost);
+
+
 
         const orderData = {
           seller_id: sellerId,
@@ -1562,7 +1575,7 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
           delivery_charge: deliveryChargeNum,
           profit: finalProfit,
           status: finalStatus,
-          is_paid: finalIsPaid,
+is_paid: finalIsPaid,
           rowIndex: i + 2 // Keep track of original row for error reporting
         };
 
@@ -1574,12 +1587,13 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
 
         validOrders.push(orderData);
         orderRefs.push(String(sellerRef));
+
       } catch (error) {
         errors.push({ row: i + 2, error: error.message || 'Unknown error' });
       }
     }
 
-    console.log(`[Bulk Upload] Step 1 complete: ${validOrders.length} valid orders, ${errors.length} validation errors`);
+console.log(`[Bulk Upload] Step 1 complete: ${validOrders.length} valid orders, ${errors.length} validation errors`);
 
     // Step 2: Batch check for duplicates
     console.log(`[Bulk Upload] Step 2: Checking for duplicates in ${orderRefs.length} orders...`);
@@ -1713,7 +1727,8 @@ app.post('/api/orders/bulk-upload', authenticateToken, upload.single('file'), as
     });
   } catch (error) {
     console.error('Error bulk uploading orders:', error);
-    res.status(500).json({ error: 'Failed to bulk upload orders: ' + error.message });
+res.status(500).json({ error: 'Failed to bulk upload orders: ' + error.message });
+
   }
 });
 
@@ -1810,7 +1825,7 @@ app.post('/api/orders/return-scan', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Tracking ID is required' });
     }
 
-    // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
     const cleanTrackingId = tracking_id != null ? String(tracking_id).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
     
     if (!cleanTrackingId) {
@@ -1821,7 +1836,8 @@ app.post('/api/orders/return-scan', authenticateToken, async (req, res) => {
     let query = supabase
       .from('orders')
       .select('id, seller_id')
-      .eq('tracking_id', cleanTrackingId);
+.eq('tracking_id', cleanTrackingId);
+
 
     // Sellers can only scan their own orders
     if (req.user.role === 'seller') {
@@ -3493,7 +3509,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
           const isReturned = statusLower === 'returned' || statusLower === 'return';
           
           // Calculate profit based on status
-          // User requirement: "Delivery charges Of returned status as minus in profit"
+// User requirement: "Delivery charges Of returned status as minus in profit"
           // For return orders: show delivery charge as negative/minus in profit column
           let displayProfit = 0;
           if (isReturned) {
@@ -3501,6 +3517,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
             // Orders already have calculated DC for Affan seller or original DC for others
             const dcValue = parseFloat(order.delivery_charge || 0);
             displayProfit = -Math.abs(dcValue); // Show DC as negative in profit column
+
           } else {
             // For delivered orders: use profit from order table
             displayProfit = parseFloat(order.profit || 0);
@@ -3891,7 +3908,7 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
       // Calculate profit based on order status
       let orderProfit = 0;
       if (isReturned) {
-        // For returned orders: DC (delivery charge) is shown as negative in profit column
+// For returned orders: DC (delivery charge) is shown as negative in profit column
         // User requirement: "Delivery charges Of returned status as minus in profit"
         // Total profit calculation: Delivered Profit - Return DC
         // IMPORTANT: For Affan seller, use calculated DC (based on product count), not original DC
@@ -3899,6 +3916,7 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
         const dcToSubtract = isAffanSeller ? Math.abs(orderDeliveryCharge) : Math.abs(parseFloat(order.delivery_charge || 0));
         orderProfit = -dcToSubtract; // Negative DC shown as profit for returned orders
         totalProfit += orderProfit; // Add negative profit (subtracts DC from total)
+
         // Delivery charge for returned orders is negative (will be subtracted in total)
         totalDeliveryCharge -= dcToSubtract; // Subtract DC for returns
       } else {
@@ -4304,7 +4322,7 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    console.log('[API] Bulk uploading customers, file:', req.file.originalname, 'size:', req.file.size);
+console.log('[API] Bulk uploading customers, file:', req.file.originalname, 'size:', req.file.size);
 
     // Parse Excel/CSV file
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
@@ -4312,7 +4330,7 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
     const worksheet = workbook.Sheets[sheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-    console.log('[API] Parsed', jsonData.length, 'rows from file');
+console.log('[API] Parsed', jsonData.length, 'rows from file');
     if (jsonData.length > 0) {
       console.log('[API] First row sample:', JSON.stringify(jsonData[0]));
       console.log('[API] Available columns:', Object.keys(jsonData[0]));
@@ -4346,19 +4364,20 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
     let totalAdded = 0;
     let totalSkipped = 0;
     const errors = [];
-    const skipReasons = {
+const skipReasons = {
       missingFields: 0,
       duplicates: 0,
       insertErrors: 0,
       otherErrors: 0
     };
 
+
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
       
       try {
         // Extract data from row (support multiple column name formats)
-        // Convert to string to handle numbers from Excel (phone numbers are often parsed as numbers)
+// Convert to string to handle numbers from Excel (phone numbers are often parsed as numbers)
         const toString = (val) => {
           if (val == null || val === undefined || val === '') return '';
           // Handle numbers, booleans, and other types by converting to string
@@ -4501,6 +4520,7 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
     });
   } catch (error) {
     console.error('[API] Error bulk uploading customers:', error);
+
     res.status(500).json({ error: error.message || 'Failed to bulk upload customers' });
   }
 });
@@ -4649,13 +4669,14 @@ const processLedgerEntries = (entries) => {
 };
 
 // Get ledger dashboard stats
+
 app.get('/api/ledger/dashboard/stats', authenticateToken, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
+console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
 
     // Get all billing entries (bills and payments)
     const { data: billingEntries, error: entriesError } = await supabase
@@ -4748,6 +4769,7 @@ app.get('/api/ledger/dashboard/stats', authenticateToken, async (req, res) => {
         transactionCount: transactionCount,
         top_due_customers: topDueCustomers || []
       }
+
     });
   } catch (error) {
     console.error('Error fetching ledger dashboard stats:', error);
@@ -4794,17 +4816,18 @@ app.get('/api/ledger/dashboard/analytics', authenticateToken, async (req, res) =
         startDate.setDate(now.getDate() - 7);
     }
 
-    console.log(`[Ledger Dashboard Analytics] Fetching billing_entries for period: ${period}`);
+console.log(`[Ledger Dashboard Analytics] Fetching billing_entries for period: ${period}`);
 
     // Get billing entries in date range
     const { data: billingEntries, error } = await supabase
       .from('billing_entries')
+
       .select('*')
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', now.toISOString().split('T')[0])
       .order('date', { ascending: true });
 
-    if (error) {
+if (error) {
       console.error('[Ledger Dashboard Analytics] Error fetching billing_entries:', error);
       throw error;
     }
@@ -4846,10 +4869,406 @@ app.get('/api/ledger/dashboard/analytics', authenticateToken, async (req, res) =
       data: Object.values(dailyData),
       labels: Object.keys(dailyData),
       summary
+
     });
   } catch (error) {
     console.error('Error fetching ledger analytics:', error);
     res.status(500).json({ error: 'Failed to fetch ledger analytics' });
+  }
+});
+
+// Get ledger khata entries
+app.get('/api/ledger/khata', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { customer_id, bill_number, start_date, end_date } = req.query;
+
+    // Build query
+    let query = supabase
+      .from('billing_entries')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          phone,
+          address,
+          city
+        )
+      `)
+      .order('date', { ascending: true });
+
+    if (customer_id) {
+      query = query.eq('customer_id', customer_id);
+    }
+
+    if (bill_number) {
+      query = query.eq('bill_number', bill_number);
+    }
+
+    if (start_date) {
+      query = query.gte('date', start_date);
+    }
+
+    if (end_date) {
+      query = query.lte('date', end_date);
+    }
+
+    const { data: billingEntries, error } = await query;
+
+    if (error) throw error;
+
+    // Use processLedgerEntries to get formatted entries
+    const { entries: ledgerEntries, totals } = processLedgerEntries(billingEntries || []);
+
+    res.json({
+      entries: ledgerEntries || [],
+      totals: totals || {}
+    });
+  } catch (error) {
+    console.error('Error fetching ledger khata:', error);
+    res.status(500).json({ error: 'Failed to fetch ledger khata' });
+  }
+});
+
+// Get ledger khata PDF
+app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { customer_id, bill_number, start_date, end_date } = req.query;
+
+    // Build query
+    let query = supabase
+      .from('billing_entries')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          phone,
+          address,
+          city
+        )
+      `)
+      .order('date', { ascending: true });
+
+    if (customer_id) {
+      query = query.eq('customer_id', customer_id);
+    }
+
+    if (bill_number) {
+      query = query.eq('bill_number', bill_number);
+    }
+
+    if (start_date) {
+      query = query.gte('date', start_date);
+    }
+
+    if (end_date) {
+      query = query.lte('date', end_date);
+    }
+
+    const { data: billingEntries, error } = await query;
+
+    if (error) throw error;
+
+    // Use processLedgerEntries to get formatted entries
+    const { entries: ledgerEntries, totals } = processLedgerEntries(billingEntries || []);
+
+    // Get customer info if filtered by customer
+    let customer = null;
+    if (customer_id && ledgerEntries.length > 0) {
+      customer = ledgerEntries[0].customer;
+    }
+
+    // Format dates for display
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric' 
+        });
+      } catch (e) {
+        return dateStr;
+      }
+    };
+
+    const formatDateTime = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleString('en-GB', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return dateStr;
+      }
+    };
+
+    // Generated date
+    const generatedDate = new Date();
+    const generatedDateStr = generatedDate.toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Date filter info
+    let dateFilterInfo = '';
+    if (start_date || end_date) {
+      const startDateStr = start_date ? formatDate(start_date) : 'Start';
+      const endDateStr = end_date ? formatDate(end_date) : 'End';
+      dateFilterInfo = `${startDateStr} ${end_date ? 'تا' : ''} ${endDateStr}`;
+    }
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>Ledger Khata - ${customer ? customer.name : 'All Customers'}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; 
+      padding: 20px; 
+      background: #f5f5f5; 
+      direction: rtl; 
+    }
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      background: white; 
+      padding: 20px; 
+      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+    }
+    .header { 
+      text-align: center; 
+      margin-bottom: 20px; 
+      border-bottom: 3px solid #4F46E5; 
+      padding-bottom: 15px; 
+    }
+    .logo-section {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    .logo-circle { 
+      width: 60px; 
+      height: 60px; 
+      border-radius: 50%; 
+      background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      color: white; 
+      font-size: 24px; 
+      font-weight: bold; 
+    }
+    .header h1 { 
+      color: #4F46E5; 
+      font-size: 28px; 
+      margin-bottom: 5px; 
+      font-weight: bold; 
+    }
+    .date-filter-info {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .generated-date {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #999;
+    }
+    .customer-info { 
+      background: #f9f9f9; 
+      padding: 12px; 
+      border-radius: 4px; 
+      margin-bottom: 20px; 
+      direction: rtl; 
+    }
+    .customer-info p { 
+      margin: 4px 0; 
+      font-size: 13px; 
+    }
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin: 15px 0; 
+      direction: rtl; 
+      font-size: 12px; 
+    }
+    th { 
+      background: #4F46E5; 
+      color: white; 
+      padding: 10px 6px; 
+      text-align: right; 
+      font-weight: bold; 
+      font-size: 12px; 
+    }
+    td { 
+      padding: 8px 6px; 
+      border-bottom: 1px solid #e0e0e0; 
+      text-align: right; 
+      font-size: 12px; 
+    }
+    tr:nth-child(even) { 
+      background-color: #f9f9f9; 
+    }
+    .text-left { 
+      text-align: left; 
+      direction: ltr; 
+    }
+    .summary-section { 
+      margin-top: 20px; 
+      border-top: 2px solid #4F46E5; 
+      padding-top: 15px; 
+      direction: rtl; 
+    }
+    .summary-row { 
+      display: flex; 
+      justify-content: space-between; 
+      padding: 6px 0; 
+      font-size: 13px; 
+      direction: rtl; 
+    }
+    .summary-row.total { 
+      font-size: 16px; 
+      font-weight: bold; 
+      border-top: 2px solid #4F46E5; 
+      margin-top: 8px; 
+      padding-top: 10px; 
+    }
+    @media print {
+      body { background: white; padding: 5px; direction: rtl; }
+      .container { box-shadow: none; padding: 10px; }
+      @page { margin: 8mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo-circle">AK</div>
+        <div>
+          <h1>ADNAN KHADAR HOUSE</h1>
+          <p style="font-size: 14px; color: #666; margin-top: 5px;">Ledger Khata <span style="font-family: 'Noto Nastaliq Urdu';">لیجر کھاتہ</span></p>
+        </div>
+      </div>
+      ${dateFilterInfo ? `
+      <div class="date-filter-info">
+        <strong>دورانیہ:</strong> ${dateFilterInfo}
+      </div>
+      ` : ''}
+      <div class="generated-date">
+        Generated on: ${generatedDateStr} | <span style="font-family: 'Noto Nastaliq Urdu';">تاریخ پیدائش:</span> ${generatedDateStr}
+      </div>
+    </div>
+    ${customer ? `
+    <div class="customer-info">
+      <p style="font-weight: bold; font-size: 15px; margin-bottom: 6px;">${customer.name || 'N/A'}</p>
+      <p style="font-size: 12px;">Phone: ${customer.phone || 'N/A'}</p>
+      <p style="font-size: 12px;">Address: ${customer.address || 'N/A'}${customer.city ? ', ' + customer.city : ''}</p>
+    </div>
+    ` : ''}
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 80px;">Date & Time</th>
+          <th style="min-width: 150px;">Description</th>
+          <th style="width: 100px;">Bill Number</th>
+          <th style="min-width: 120px;">Product</th>
+          <th style="width: 90px;" class="text-left">Debit</th>
+          <th style="width: 90px;" class="text-left">Credit</th>
+          <th style="width: 90px;" class="text-left">Balance</th>
+          <th style="width: 100px;">Payment Method</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(ledgerEntries || []).map(entry => {
+          const dateTime = formatDateTime(entry.date);
+          const description = entry.description || '-';
+          const billNumber = entry.bill_number || '-';
+          const product = entry.product_name || '-';
+          const debit = parseFloat(entry.debit || 0);
+          const credit = parseFloat(entry.credit || 0);
+          const balance = parseFloat(entry.balance || 0);
+          const paymentMethod = entry.payment_method || '-';
+          
+          return `
+          <tr>
+            <td>${dateTime}</td>
+            <td>${description}</td>
+            <td>${billNumber}</td>
+            <td>${product}</td>
+            <td class="text-left">${debit > 0 ? `Rs. ${debit.toFixed(2)}` : '-'}</td>
+            <td class="text-left">${credit > 0 ? `Rs. ${credit.toFixed(2)}` : '-'}</td>
+            <td class="text-left">Rs. ${balance.toFixed(2)}</td>
+            <td>${paymentMethod}</td>
+          </tr>
+        `;
+        }).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background: #e0f2fe; font-weight: bold;">
+          <td colspan="4" style="text-align: right; padding-right: 10px;">
+            Total:
+          </td>
+          <td class="text-left">Rs. ${(totals.total_debit || 0).toFixed(2)}</td>
+          <td class="text-left">Rs. ${(totals.total_credit || 0).toFixed(2)}</td>
+          <td class="text-left">Rs. ${(totals.remaining_balance || 0).toFixed(2)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="summary-section">
+      <div class="summary-row">
+        <span><strong>Total Debit <span style="font-family: 'Noto Nastaliq Urdu';">کل ڈیبٹ</span>:</strong></span>
+        <span class="text-left" style="direction: ltr;"><strong>Rs. ${(totals.total_debit || 0).toFixed(2)}</strong></span>
+      </div>
+      <div class="summary-row">
+        <span><strong>Total Credit <span style="font-family: 'Noto Nastaliq Urdu';">کل کریڈٹ</span>:</strong></span>
+        <span class="text-left" style="direction: ltr;"><strong>Rs. ${(totals.total_credit || 0).toFixed(2)}</strong></span>
+      </div>
+      <div class="summary-row total">
+        <span><strong>Remaining Balance <span style="font-family: 'Noto Nastaliq Urdu';">باقی بیلنس</span>:</strong></span>
+        <span class="text-left" style="color: ${(totals.remaining_balance || 0) > 0 ? 'red' : 'green'}; direction: ltr;"><strong>Rs. ${(totals.remaining_balance || 0).toFixed(2)}</strong></span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating ledger khata PDF:', error);
+    res.status(500).json({ error: 'Failed to generate ledger khata PDF' });
   }
 });
 
@@ -5296,592 +5715,7 @@ app.get('/api/ledger/entries/excel', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================
-// COMPREHENSIVE LEDGER KHATA SYSTEM
-// Complete ledger system with all columns from billing_entries
-// ============================================
-// NOTE: processLedgerEntries function is defined earlier in the file
-// and is shared by multiple endpoints for consistent ledger processing
-
-// Get comprehensive ledger khata entries from billing_entries
-// Returns chronological ledger format
-app.get('/api/ledger/khata', authenticateToken, async (req, res) => {
-  console.log('[API] GET /api/ledger/khata - Request received');
-  try {
-    if (!isSupabaseConfigured) {
-      console.error('[API] Database not configured');
-      return res.status(500).json({ error: 'Database not configured' });
-    }
-
-    const { customer_id, bill_number, start_date, end_date } = req.query;
-    console.log('[API] Query params:', { customer_id, bill_number, start_date, end_date });
-
-    // Build query from billing_entries with all columns
-    // Use left join for customers to handle entries without customers gracefully
-    let query = supabase
-      .from('billing_entries')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          phone,
-          address,
-          city
-        )
-      `)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (customer_id) {
-      query = query.eq('customer_id', customer_id);
-    }
-
-    if (bill_number) {
-      query = query.eq('bill_number', bill_number);
-    }
-
-    if (start_date) {
-      query = query.gte('date', start_date);
-    }
-
-    if (end_date) {
-      query = query.lte('date', end_date);
-    }
-
-    const { data: entries, error } = await query;
-
-    if (error) {
-      console.error('[API] Error fetching billing_entries:', error);
-      console.error('[API] Error details:', error.message, error.code, error.details);
-      throw error;
-    }
-
-    console.log(`[API] Fetched ${entries?.length || 0} billing entries`);
-
-    // Handle empty entries
-    if (!entries || entries.length === 0) {
-      return res.json({ 
-        entries: [],
-        totals: {
-          total_amount: 0,
-          total_received: 0,
-          total_credit: 0,
-          total_debit: 0,
-          final_balance: 0,
-          remaining_balance: 0
-        },
-        count: 0
-      });
-    }
-
-    // Use shared function to process ledger entries
-    const { entries: khataEntries, totals } = processLedgerEntries(entries);
-
-    console.log(`\n[API] Returning ${khataEntries.length} chronological ledger entries`);
-    console.log(`[API] Format: Date & Time | Debit | Credit | Remaining Balance | Payment Method`);
-    if (khataEntries.length > 0) {
-      console.log(`[API] Sample entry:`, JSON.stringify(khataEntries[0], null, 2));
-      console.log(`[API] Sample entry fields - description: "${khataEntries[0].description}", debit: ${khataEntries[0].debit}, credit: ${khataEntries[0].credit}, balance: ${khataEntries[0].balance}`);
-    }
-    console.log(`[API] Totals:`, totals);
-    res.json({ 
-      entries: khataEntries,
-      totals,
-      count: khataEntries.length
-    });
-  } catch (error) {
-    console.error('[API] Error fetching ledger khata:', error);
-    console.error('[API] Error details:', {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      stack: error.stack
-    });
-    res.status(500).json({ 
-      error: 'Failed to fetch ledger khata',
-      details: error.message || 'Unknown error',
-      entries: [],
-      totals: {
-        total_amount: 0,
-        total_received: 0,
-        total_credit: 0,
-        total_debit: 0,
-        final_balance: 0,
-        remaining_balance: 0
-      }
-    });
-  }
-});
-
-// Export comprehensive ledger khata as PDF with bill summary (no transaction history)
-app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
-  try {
-    if (!isSupabaseConfigured) {
-      return res.status(500).json({ error: 'Database not configured' });
-    }
-
-    const { customer_id, bill_number, start_date, end_date } = req.query;
-
-    // Format dates for display in Urdu
-    const formatDateForDisplay = (dateStr) => {
-      if (!dateStr) return '';
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-PK', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit' 
-      });
-    };
-    
-    // Create date range text in Urdu for PDF header
-    let dateRangeTextUrdu = '';
-    if (start_date && end_date) {
-      dateRangeTextUrdu = `${formatDateForDisplay(start_date)} سے ${formatDateForDisplay(end_date)} تک`;
-    } else if (start_date) {
-      dateRangeTextUrdu = `${formatDateForDisplay(start_date)} سے`;
-    } else if (end_date) {
-      dateRangeTextUrdu = `${formatDateForDisplay(end_date)} تک`;
-    }
-    
-    // Create date range text in English for customer name area
-    let dateRangeTextEnglish = '';
-    if (start_date && end_date) {
-      dateRangeTextEnglish = `From ${formatDateForDisplay(start_date)} To ${formatDateForDisplay(end_date)}`;
-    } else if (start_date) {
-      dateRangeTextEnglish = `From ${formatDateForDisplay(start_date)}`;
-    } else if (end_date) {
-      dateRangeTextEnglish = `To ${formatDateForDisplay(end_date)}`;
-    }
-
-    // Fetch khata entries directly from database - chronological order
-    let query = supabase
-      .from('billing_entries')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          phone,
-          address,
-          city
-        )
-      `)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (customer_id) {
-      query = query.eq('customer_id', customer_id);
-    }
-
-    if (bill_number) {
-      query = query.eq('bill_number', bill_number);
-    }
-
-    if (start_date) {
-      query = query.gte('date', start_date);
-    }
-
-    if (end_date) {
-      query = query.lte('date', end_date);
-    }
-
-    const { data: entries, error } = await query;
-
-    if (error) throw error;
-
-    console.log(`[PDF] Fetched ${entries?.length || 0} raw billing entries from database`);
-    console.log(`[PDF] Filters: customer_id=${customer_id}, bill_number=${bill_number}, start_date=${start_date}, end_date=${end_date}`);
-    
-    // Handle empty entries
-    if (!entries || entries.length === 0) {
-      return res.status(404).json({ error: 'No ledger entries found for the selected filters' });
-    }
-
-    // Count entry types in raw data
-    const billsCount = entries.filter(e => e.entry_type === 'order').length;
-    const paymentsCount = entries.filter(e => e.entry_type === 'payment').length;
-    console.log(`[PDF] Raw entries: ${billsCount} bills (orders), ${paymentsCount} payments`);
-
-    // Use shared function to process ledger entries - EXACT same data as table
-    // This includes BOTH bills (debit entries) AND payments (credit entries) - complete snapshot
-    const { entries: khataEntries, totals } = processLedgerEntries(entries);
-    
-    const processedBillsCount = khataEntries.filter(e => e.entry_type === 'order').length;
-    const processedPaymentsCount = khataEntries.filter(e => e.entry_type === 'payment').length;
-    console.log(`[PDF] Processed ${khataEntries.length} ledger entries: ${processedBillsCount} bills, ${processedPaymentsCount} payments`);
-    console.log(`[PDF] This is a complete snapshot of ALL data visible in the table`);
-
-    // Get customer from first entry or filter, or fetch directly
-    let customer = customer_id ? (khataEntries.find(e => e.customer)?.customer || null) : null;
-    
-    // If customer_id is provided but customer not found in entries, fetch directly
-    if (customer_id && !customer) {
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .select('id, name, phone, address, city')
-        .eq('id', customer_id)
-        .maybeSingle();
-      
-      if (!customerError && customerData) {
-        customer = customerData;
-      }
-    }
-
-    // Get admin user information for credentials
-    // Handle gracefully to avoid console errors
-    let adminUser = null;
-    try {
-      const { data: adminData, error: adminError } = await supabase
-        .from('users')
-        .select('id, name, email')
-        .eq('role', 'admin')
-        .limit(1)
-        .maybeSingle();
-      
-      if (!adminError && adminData) {
-        adminUser = adminData;
-      }
-    } catch (error) {
-      // Silently continue without admin info to avoid console errors
-      adminUser = null;
-    }
-
-    // Generate comprehensive HTML PDF with all columns
-    const currentDate = new Date().toLocaleString('en-PK', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Ledger Khata</title>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; direction: rtl; }
-    .urdu { font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; direction: rtl; }
-    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); direction: rtl; }
-    .header { margin-bottom: 30px; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; }
-    .header-top { display: flex; align-items: center; justify-content: center; margin-bottom: 15px; }
-    .logo-section { display: flex; align-items: center; gap: 15px; justify-content: center; }
-    .logo-circle { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
-    .logo-circle div { color: white; font-size: 32px; font-weight: bold; }
-    .company-info { text-align: center; direction: ltr; }
-    .company-info h1 { color: #1e40af; font-size: 28px; margin: 0; font-weight: bold; }
-    .company-info p { color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600; }
-    .admin-info { text-align: left; direction: ltr; font-size: 12px; color: #666; }
-    .admin-info p { margin: 2px 0; }
-    .header-title { margin-top: 15px; }
-    .header-title h1 { color: #4F46E5; font-size: 36px; margin-bottom: 10px; font-weight: bold; }
-    .header-title h2 { color: #666; font-size: 18px; }
-    .title-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; direction: rtl; }
-    .title-left { flex: 1; text-align: left; }
-    .title-right { flex: 1; text-align: right; }
-    .customer-name-section { padding: 12px; background: #f0f9ff; border: 2px solid #1e40af; border-radius: 8px; direction: rtl; display: inline-block; }
-    .customer-name-section p { margin: 3px 0; }
-    .khata-title { font-size: 48px; font-weight: bold; color: #4F46E5; }
-    .signature-section { margin-top: 50px; padding-top: 30px; border-top: 2px solid #4F46E5; direction: rtl; }
-    .signature-box { margin-top: 40px; text-align: left; direction: ltr; }
-    .signature-line { border-top: 2px solid #333; width: 250px; margin-top: 60px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; direction: rtl; border: 1px solid #333; }
-    th { background: #4F46E5; color: white; padding: 10px 6px; text-align: right; font-weight: bold; border: 1px solid #333; }
-    th .urdu { font-size: 0.9em; }
-    td { padding: 8px 6px; border: 1px solid #333; text-align: right; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    .text-right { text-align: left; direction: ltr; }
-    .text-left { text-align: right; }
-    .text-center { text-align: center; }
-    td.text-right { direction: ltr; }
-    .summary { margin-top: 30px; border-top: 3px solid #4F46E5; padding-top: 20px; direction: rtl; }
-    .summary-row { display: flex; justify-content: space-between; padding: 12px 0; font-size: 20px; direction: rtl; font-weight: bold; }
-    .summary-row.total { font-size: 28px; font-weight: bold; border-top: 3px solid #4F46E5; margin-top: 15px; padding-top: 20px; }
-    .positive { color: green; font-weight: bold; }
-    .negative { color: red; font-weight: bold; }
-    @media print {
-      body { background: white; padding: 10px; direction: rtl; }
-      .container { box-shadow: none; direction: rtl; }
-      @page { margin: 10mm; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="header-top">
-        <div class="logo-section">
-          <div class="logo-circle">
-            <div>AK</div>
-          </div>
-          <div class="company-info">
-            <h1>ADNAN KHADAR HOUSE</h1>
-          </div>
-        </div>
-      </div>
-      <div class="header-title">
-        <div class="title-row">
-          <div class="title-right">
-            <h1 class="urdu khata-title" style="text-align: right; direction: rtl; margin: 0; padding: 0; line-height: 1.2; font-size: 48px;">کھاتہ بنام</h1>
-          </div>
-          <div class="title-left">
-            ${customer && customer_id ? `
-            <div class="customer-name-section">
-              <p class="urdu" style="font-size: 20px; font-weight: bold; color: #1e40af; direction: rtl; margin: 0;">${(customer.name || 'N/A').replace(/[<>]/g, '')}</p>
-              ${dateRangeTextEnglish ? `<p style="font-size: 14px; color: #666; direction: ltr; margin-top: 5px; text-align: left;">${dateRangeTextEnglish}</p>` : ''}
-            </div>
-            ` : `<div><p class="urdu" style="font-size: 18px; color: #666; direction: rtl;">تمام کسٹمرز</p>${dateRangeTextEnglish ? `<p style="font-size: 14px; color: #666; direction: ltr; margin-top: 5px; text-align: left;">${dateRangeTextEnglish}</p>` : ''}</div>`}
-          </div>
-        </div>
-        <div style="text-align: center; margin-top: 12px;">
-          <h2 style="color: #1e40af; font-size: 22px; font-weight: bold; margin-bottom: 6px; direction: ltr;">ADNAN KHADAR</h2>
-          ${dateRangeTextUrdu ? `<p class="urdu" style="font-size: 16px; color: #666; direction: rtl; font-weight: 500;">یہ لیجر ${dateRangeTextUrdu} ہے</p>` : ''}
-        </div>
-      </div>
-    </div>
-    
-    <table>
-      <thead>
-        <tr>
-          <th class="text-center urdu">نمبر شمار</th>
-          <th class="urdu">تاریخ</th>
-          <th class="urdu">بل نمبر</th>
-          <th class="urdu">تفصیل</th>
-          <th class="text-right urdu">بنام</th>
-          <th class="text-right urdu">جمع</th>
-          <th class="text-right urdu">بیلنس</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${khataEntries.map((entry, index) => {
-          // DATE ONLY - show only date without time
-          const entryDate = entry.date ? new Date(entry.date).toLocaleDateString('en-PK', { 
-            year: 'numeric', 
-            month: '2-digit', 
-            day: '2-digit'
-          }) : '-';
-          const rowBg = entry.entry_type === 'payment' ? 'background-color: #f0fdf4;' : '';
-          const description = entry.description || (entry.bill_number ? `Bill ${entry.bill_number}` : '-');
-          const descExtra = entry.transaction_id ? `<br><small style="color: #666;">Txn: ${entry.transaction_id}</small>` : '';
-          const descExtra2 = entry.received_by ? `<br><small style="color: #666;">By: ${entry.received_by}</small>` : '';
-          
-          // Credit display - show amount only
-          const creditDisplay = parseFloat(entry.credit || 0) > 0 
-            ? `Rs. ${parseFloat(entry.credit).toFixed(2)}` 
-            : '-';
-          
-          return `
-          <tr style="${rowBg}">
-            <td class="text-center">${index + 1}</td>
-            <td>${entryDate}</td>
-            <td><strong>${entry.bill_number || '-'}</strong></td>
-            <td class="text-left">${description}${descExtra}${descExtra2}</td>
-            <td class="text-right negative"><strong>${entry.debit > 0 ? 'Rs. ' + parseFloat(entry.debit).toFixed(2) : '-'}</strong></td>
-            <td class="text-right positive"><strong>${creditDisplay}</strong></td>
-            <td class="text-right ${parseFloat(entry.balance || 0) >= 0 ? 'negative' : 'positive'}"><strong>Rs. ${parseFloat(entry.balance || 0).toFixed(2)}</strong></td>
-          </tr>
-          `;
-        }).join('')}
-        <tr style="background-color: #e0e7ff; border-top: 3px solid #4F46E5;">
-          <td class="text-center" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">Total</td>
-          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
-          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
-          <td class="text-left urdu" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">کل</td>
-          <td class="text-right negative" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.total_debit?.toFixed(2) || '0.00'}</td>
-          <td class="text-right positive" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.total_credit?.toFixed(2) || '0.00'}</td>
-          <td class="text-right negative" style="font-size: 26px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.remaining_balance?.toFixed(2) || '0.00'}</td>
-        </tr>
-      </tbody>
-    </table>
-    
-  </div>
-</body>
-</html>`;
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(htmlContent);
-  } catch (error) {
-    console.error('Error generating ledger khata PDF:', error);
-    res.status(500).json({ error: 'Failed to generate PDF' });
-  }
-});
-
-// Get WhatsApp message for ledger khata
-app.get('/api/ledger/khata/whatsapp', authenticateToken, async (req, res) => {
-  try {
-    if (!isSupabaseConfigured) {
-      return res.status(500).json({ error: 'Database not configured' });
-    }
-
-    const { customer_id, bill_number, start_date, end_date } = req.query;
-
-    if (!customer_id) {
-      return res.status(400).json({ error: 'Customer ID is required for WhatsApp message' });
-    }
-
-    // Fetch customer
-    const { data: customerData, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', customer_id)
-      .single();
-
-    if (customerError || !customerData) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-
-    // Fetch khata entries directly from database - chronological order
-    let query = supabase
-      .from('billing_entries')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          phone,
-          address,
-          city
-        )
-      `)
-      .eq('customer_id', customer_id)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (bill_number) {
-      query = query.eq('bill_number', bill_number);
-    }
-
-    if (start_date) {
-      query = query.gte('date', start_date);
-    }
-
-    if (end_date) {
-      query = query.lte('date', end_date);
-    }
-
-    // Fetch entries with customer data
-    let entryQuery = supabase
-      .from('billing_entries')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          phone,
-          address,
-          city
-        )
-      `)
-      .eq('customer_id', customer_id)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (bill_number) {
-      entryQuery = entryQuery.eq('bill_number', bill_number);
-    }
-
-    if (start_date) {
-      entryQuery = entryQuery.gte('date', start_date);
-    }
-
-    if (end_date) {
-      entryQuery = entryQuery.lte('date', end_date);
-    }
-
-    const { data: entries, error } = await entryQuery;
-
-    if (error) throw error;
-
-    // Use shared function to process ledger entries - EXACT same data as table
-    const { entries: khataEntries, totals } = processLedgerEntries(entries);
-
-    const customer = customerData;
-
-
-    // Generate WhatsApp message with all details
-    const currentDate = new Date().toLocaleString('en-PK', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric'
-    });
-
-    let message = `*ADNAN KHADAR HOUSE - LEDGER KHATA*\n`;
-    message += `*عدنان کھدر ہاؤس - لیجر کھاتہ*\n\n`;
-    message += `Customer: ${customer.name}\n`;
-    message += `Phone: ${customer.phone || 'N/A'}\n`;
-    message += `Date: ${currentDate}\n\n`;
-    message += `*LEDGER SUMMARY*\n`;
-    message += `━━━━━━━━━━━━━━━━\n\n`;
-
-    if (khataEntries.length > 0) {
-      message += `*Chronological Ledger Entries:*\n`;
-      khataEntries.slice(0, 30).forEach((entry, index) => {
-        const entryDate = entry.date ? new Date(entry.date).toLocaleString('en-PK', { 
-          year: 'numeric', 
-          month: '2-digit', 
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        }) : '-';
-        const desc = entry.description || (entry.bill_number ? `Bill ${entry.bill_number}` : '-');
-        const typeLabel = entry.entry_type === 'payment' ? '💵 Payment' : '📄 Bill';
-        message += `${index + 1}. ${typeLabel} - ${entry.bill_number || 'General'}\n`;
-        message += `   Date: ${entryDate}\n`;
-        message += `   ${desc}\n`;
-        if (entry.debit > 0) message += `   Debit: Rs. ${entry.debit.toFixed(2)}\n`;
-        if (entry.credit > 0) message += `   Credit: Rs. ${entry.credit.toFixed(2)}\n`;
-        message += `   Balance: Rs. ${entry.balance.toFixed(2)}\n`;
-        message += `   Method: ${entry.payment_method || 'Cash'}\n`;
-        if (entry.transaction_id) message += `   Txn: ${entry.transaction_id}\n`;
-        message += `\n`;
-      });
-      if (khataEntries.length > 30) {
-        message += `... and ${khataEntries.length - 30} more entries\n\n`;
-      }
-    }
-
-    message += `*SUMMARY TOTALS:*\n`;
-    message += `━━━━━━━━━━━━━━━━\n`;
-    message += `Total Entries: ${khataEntries.length}\n`;
-    message += `Total Debit: Rs. ${totals.total_debit?.toFixed(2) || '0.00'}\n`;
-    message += `Total Credit: Rs. ${totals.total_credit?.toFixed(2) || '0.00'}\n`;
-    message += `*Remaining Balance: Rs. ${totals.remaining_balance?.toFixed(2) || '0.00'}*\n\n`;
-
-    if (totals.remaining_balance > 0) {
-      message += `⚠️ *Outstanding Balance: Rs. ${totals.remaining_balance.toFixed(2)}*\n`;
-      message += `Please clear your outstanding balance at your earliest convenience.\n\n`;
-    } else {
-      message += `✅ Your account is up to date.\n\n`;
-    }
-
-    message += `Thank you for your business!\n`;
-    message += `*Adnan Khadar House*`;
-
-    // Get customer phone
-    const phoneNumber = customer.phone ? customer.phone.replace(/\D/g, '') : '';
-    const whatsappNumber = phoneNumber.startsWith('92') ? phoneNumber : 
-                          phoneNumber.startsWith('0') ? '92' + phoneNumber.substring(1) : 
-                          '92' + phoneNumber;
-
-    res.json({ 
-      message,
-      phone: customer.phone,
-      whatsapp_number: whatsappNumber,
-      whatsapp_url: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
-      customer_name: customer.name,
-      totals
-    });
-  } catch (error) {
-    console.error('Error generating WhatsApp message:', error);
-    res.status(500).json({ error: 'Failed to generate WhatsApp message' });
-  }
-});
+//
 
 // ============================================
 // BILLS ROUTES
@@ -6029,7 +5863,7 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: `Bill number ${bill_number} already exists` });
     }
 
-    // Verify customer exists in customers table (required for ledger integration)
+// Verify customer exists in customers table (required for ledger integration)
     const { data: customerCheck, error: customerCheckError } = await supabase
       .from('customers')
       .select('id, name')
@@ -6056,15 +5890,16 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
       billDate = now.toISOString();
     }
     const billDateOnly = billDate.split('T')[0]; // Get date only for transactions table
-    
+
     const entries = [];
 
     // Create order entries for each product
     products.forEach(product => {
       const meterPrice = parseFloat(product.meter_price || 0);
       const meters = parseFloat(product.meters || 0);
-      const discount = parseFloat(product.discount || 0);
+const discount = parseFloat(product.discount || 0);
       const orderTotal = Math.max(0, (meterPrice * meters) - discount); // Subtract discount and ensure non-negative
+
 
       entries.push({
         customer_id: customer_id,
@@ -6075,7 +5910,7 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
         entry_type: 'order',
         order_total: orderTotal,
         credit: 0,
-        debit: orderTotal, // Debit is the total amount for orders
+debit: orderTotal, // Debit is the total amount for orders
         amount_received: 0,
         payment_method: payment_method || 'Cash',
         transaction_id: transaction_id || null,
@@ -6083,12 +5918,14 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
         meters: meters || null,
         meter_price: meterPrice || null, // Store meter price for display
         discount: discount || null // Store discount if database column exists
+
       });
     });
 
     // Create payment entry if credit > 0
-    const creditAmount = parseFloat(credit || 0);
+const creditAmount = parseFloat(credit || 0);
     if (creditAmount > 0) {
+
       entries.push({
         customer_id: customer_id,
         bill_number: bill_number,
@@ -6096,9 +5933,10 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
         description: description || `Payment received for bill ${bill_number}`,
         entry_type: 'payment',
         order_total: 0,
-        credit: creditAmount,
+credit: creditAmount,
         debit: 0,
         amount_received: creditAmount, // Amount received is the credit
+
         payment_method: payment_method || 'Cash',
         transaction_id: transaction_id || null,
         received_by: received_by || null
@@ -6116,87 +5954,7 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: insertError.message || 'Failed to create bill' });
     }
 
-    // ============================================
-    // INTEGRATE WITH LEDGER SYSTEM
-    // Create transaction entries in ledger (transactions table)
-    // ============================================
-    try {
-      // Calculate total bill amount from products (with discount applied)
-      const totalBillAmount = products.reduce((sum, product) => {
-        const meterPrice = parseFloat(product.meter_price || 0);
-        const meters = parseFloat(product.meters || 0);
-        const discount = parseFloat(product.discount || 0);
-        return sum + Math.max(0, (meterPrice * meters) - discount);
-      }, 0);
-
-      const paidAmount = parseFloat(credit || 0);
-      const remainingBalance = totalBillAmount - paidAmount;
-
-      // Get customer name for description
-      const { data: customerData } = await supabase
-        .from('customers')
-        .select('name')
-        .eq('id', customer_id)
-        .single();
-
-      const customerName = customerData?.name || 'Customer';
-
-      // Create DEBIT entry in transactions table for the bill amount (Lena - money going out)
-      if (totalBillAmount > 0) {
-        const debitDescription = description || `Bill ${bill_number} - ${customerName}`;
-        const productNames = products.map(p => p.product_name || '').filter(Boolean).join(', ');
-        
-        const { error: debitError } = await supabase
-          .from('transactions')
-          .insert({
-            customer_id: customer_id,
-            order_no: bill_number,
-            date: billDateOnly,
-            description: debitDescription,
-            debit: totalBillAmount,
-            credit: 0,
-            payment_method: payment_method || 'Cash',
-            bank_note: `Bill ${bill_number} - Products: ${productNames}`,
-            product: productNames || null,
-            product_description: description || null,
-            total_amount: totalBillAmount,
-            paid_amount: paidAmount
-          });
-
-        if (debitError) {
-          console.error('Error creating debit transaction in ledger:', debitError);
-          // Don't fail the bill creation, just log the error
-        }
-      }
-
-      // Create CREDIT entry in transactions table if payment was made (Dena - money coming in)
-      if (paidAmount > 0) {
-        const creditDescription = `Payment received for Bill ${bill_number} - ${customerName}`;
-        
-        const { error: creditError } = await supabase
-          .from('transactions')
-          .insert({
-            customer_id: customer_id,
-            order_no: bill_number,
-            date: billDateOnly,
-            description: creditDescription,
-            debit: 0,
-            credit: paidAmount,
-            payment_method: payment_method || 'Cash',
-            bank_note: transaction_id ? `Transaction ID: ${transaction_id}` : (received_by ? `Received by: ${received_by}` : null),
-            total_amount: totalBillAmount,
-            paid_amount: paidAmount
-          });
-
-        if (creditError) {
-          console.error('Error creating credit transaction in ledger:', creditError);
-          // Don't fail the bill creation, just log the error
-        }
-      }
-    } catch (ledgerError) {
-      console.error('Error integrating with ledger system:', ledgerError);
-      // Don't fail the bill creation if ledger integration fails
-    }
+//
 
     res.json({
       message: 'Bill created successfully',
@@ -6260,8 +6018,9 @@ app.post('/api/bills/bulk-upload', authenticateToken, upload.single('file'), asy
       billsMap[billNumber].products.push({
         product_name: row['Product Name'] || row['product_name'] || '',
         meters: row['Meters'] || row['meters'] || '0',
-        meter_price: row['Price'] || row['price'] || row['Meter Price'] || '0',
+meter_price: row['Price'] || row['price'] || row['Meter Price'] || '0',
         discount: row['Discount'] || row['discount'] || '0'
+
       });
     });
 
@@ -6323,8 +6082,9 @@ app.post('/api/bills/bulk-upload', authenticateToken, upload.single('file'), asy
         billData.products.forEach(product => {
           const meterPrice = parseFloat(product.meter_price || 0);
           const meters = parseFloat(product.meters || 0);
-          const discount = parseFloat(product.discount || 0);
+const discount = parseFloat(product.discount || 0);
           const orderTotal = Math.max(0, (meterPrice * meters) - discount);
+
           totalAmount += orderTotal;
 
           entries.push({
@@ -6340,9 +6100,10 @@ app.post('/api/bills/bulk-upload', authenticateToken, upload.single('file'), asy
             payment_method: billData.payment_method,
             transaction_id: billData.transaction_id,
             received_by: billData.received_by,
-            meters: meters || null,
+meters: meters || null,
             meter_price: meterPrice || null,
             discount: discount || null
+
           });
         });
 
@@ -6498,13 +6259,14 @@ app.get('/api/bills/customer/:customer_id/unpaid-pdf', authenticateToken, async 
       body { background: white; padding: 5px; direction: rtl; }
       .container { box-shadow: none; direction: rtl; padding: 10px; }
       @page { margin: 8mm; }
+
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo-circle">
+<div class="logo-circle">
         <div>AK</div>
       </div>
       <div class="header-content">
@@ -6519,17 +6281,19 @@ app.get('/api/bills/customer/:customer_id/unpaid-pdf', authenticateToken, async 
     </div>
     ${unpaidBills.map(bill => {
       const orderEntries = bill.entries.filter(e => e.entry_type === 'order');
+
       const paymentEntries = bill.entries.filter(e => e.entry_type === 'payment' || e.entry_type === 'adjustment');
       return `
         <div class="bill-section">
           <div class="bill-header">
-            <h3 style="margin: 0; font-size: 14px;">بل نمبر: ${bill.bill_number}</h3>
+<h3 style="margin: 0; font-size: 14px;">بل نمبر: ${bill.bill_number}</h3>
             <p style="margin: 2px 0 0 0; font-size: 12px;">تاریخ: ${new Date(bill.date).toLocaleDateString('en-US')}</p>
+
           </div>
           <table>
             <thead>
               <tr>
-                <th style="width: 40px;">نمبر</th>
+<th style="width: 40px;">نمبر</th>
                 <th style="min-width: 120px;">پروڈکٹ</th>
                 <th style="width: 60px;">میٹر</th>
                 <th style="width: 90px;" class="text-left">فی میٹر قیمت</th>
@@ -6582,22 +6346,25 @@ app.get('/api/bills/customer/:customer_id/unpaid-pdf', authenticateToken, async 
                     <td style="text-align: right;">${p.entry_type === 'adjustment' ? 'ایڈجسٹمنٹ' : 'ادائیگی موصول'}</td>
                     <td class="text-left text-green">Rs. ${parseFloat(p.credit || 0).toFixed(2)}</td>
                     <td style="text-align: right;">${p.payment_method || 'نقد'}</td>
+
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           ` : ''}
           <div class="summary">
-            <p style="font-size: 12px;"><strong>کل بل:</strong> <span class="text-left" style="direction: ltr;">Rs. ${bill.order_total.toFixed(2)}</span></p>
+<p style="font-size: 12px;"><strong>کل بل:</strong> <span class="text-left" style="direction: ltr;">Rs. ${bill.order_total.toFixed(2)}</span></p>
             <p style="font-size: 12px;"><strong>ادا شدہ:</strong> <span class="text-left text-green" style="direction: ltr;">Rs. ${bill.total_credit.toFixed(2)}</span></p>
             <p style="font-size: 12px;"><strong>باقی:</strong> <span class="text-left text-red" style="direction: ltr;">Rs. ${bill.remaining.toFixed(2)}</span></p>
+
           </div>
         </div>
       `;
     }).join('')}
-    <div class="summary" style="background: #fef2f2; margin-top: 15px; direction: rtl;">
+<div class="summary" style="background: #fef2f2; margin-top: 15px; direction: rtl;">
       <h3 style="color: #EF4444; margin-bottom: 4px; font-size: 16px;">کل غیر ادا شدہ رقم</h3>
       <p style="font-size: 18px; font-weight: bold; color: #EF4444; direction: ltr; text-align: left;">Rs. ${totalUnpaid.toFixed(2)}</p>
+
     </div>
   </div>
 </body>
@@ -7076,6 +6843,7 @@ app.post('/api/bills/:bill_number/payment', authenticateToken, async (req, res) 
     const { bill_number } = req.params;
     const { amount, payment_method, received_by, transaction_id, payment_date } = req.body;
 
+
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
     }
@@ -7094,7 +6862,7 @@ app.post('/api/bills/:bill_number/payment', authenticateToken, async (req, res) 
     const customer_id = billEntries[0].customer_id;
 
     // Create payment entry with all details including date and time
-    const paymentAmount = parseFloat(amount || 0);
+const paymentAmount = parseFloat(amount || 0);
     
     // Use provided payment_date or default to current date/time
     let paymentDateValue;
@@ -7112,20 +6880,21 @@ app.post('/api/bills/:bill_number/payment', authenticateToken, async (req, res) 
     } else {
       paymentDateValue = new Date().toISOString();
     }
-    
+
     const { data: paymentEntry, error: insertError } = await supabase
       .from('billing_entries')
       .insert({
         customer_id: customer_id,
         bill_number: bill_number,
         entry_type: 'payment',
-        credit: paymentAmount,
+credit: paymentAmount,
         debit: 0,
         amount_received: paymentAmount, // Set amount_received for payment entries
         payment_method: payment_method || 'Cash',
         transaction_id: transaction_id || null,
         received_by: received_by || null,
         date: paymentDateValue,
+
         description: `Payment received for bill ${bill_number}`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -7138,78 +6907,7 @@ app.post('/api/bills/:bill_number/payment', authenticateToken, async (req, res) 
       throw insertError;
     }
 
-    // ============================================
-    // INTEGRATE WITH LEDGER SYSTEM
-    // Create CREDIT entry in transactions table when payment is made
-    // ============================================
-    try {
-      const paymentAmount = parseFloat(amount || 0);
-      
-      if (paymentAmount > 0) {
-        // Get customer name and bill details
-        const { data: customerData } = await supabase
-          .from('customers')
-          .select('name')
-          .eq('id', customer_id)
-          .single();
-
-        // Get all order entries for this bill to calculate total
-        const { data: billOrders } = await supabase
-          .from('billing_entries')
-          .select('product_name, order_total')
-          .eq('bill_number', bill_number)
-          .eq('entry_type', 'order');
-
-        const customerName = customerData?.name || 'Customer';
-        
-        // Calculate total bill amount from all order entries
-        const totalBillAmount = (billOrders || []).reduce((sum, order) => sum + parseFloat(order.order_total || 0), 0);
-        
-        // Get product names
-        const productNames = (billOrders || [])
-          .map(o => o.product_name)
-          .filter(Boolean)
-          .join(', ') || '';
-
-        // Create CREDIT entry in transactions table (Dena - money coming in)
-        const creditDescription = `Payment received for Bill ${bill_number} - ${customerName}`;
-        
-        const bankNote = transaction_id 
-          ? `Transaction ID: ${transaction_id}` 
-          : (received_by ? `Received by: ${received_by}` : null);
-
-        // Use the same payment date for transactions table
-        const transactionDate = payment_date 
-          ? payment_date.split('T')[0]  // Extract just the date part
-          : new Date().toISOString().split('T')[0];
-        
-        const { error: creditError } = await supabase
-          .from('transactions')
-          .insert({
-            customer_id: customer_id,
-            order_no: bill_number,
-            date: transactionDate,
-            description: creditDescription,
-            debit: 0,
-            credit: paymentAmount,
-            payment_method: payment_method || 'Cash',
-            bank_note: bankNote,
-            product: productNames || null,
-            total_amount: totalBillAmount,
-            paid_amount: paymentAmount
-          });
-
-        if (creditError) {
-          console.error('Error creating credit transaction in ledger:', creditError);
-          // Don't fail the payment if ledger integration fails
-        } else {
-          console.log(`Ledger entry created: Credit ${paymentAmount} for Bill ${bill_number}`);
-        }
-      }
-    } catch (ledgerError) {
-      console.error('Error integrating payment with ledger system:', ledgerError);
-      // Don't fail the payment if ledger integration fails
-    }
+//
 
     res.json({ 
       message: 'Payment recorded successfully',
@@ -7257,10 +6955,11 @@ app.get('/api/payments/history', authenticateToken, async (req, res) => {
 
     let query = supabase
       .from('billing_entries')
-      .select('*, customers(id, name, phone, address, city)')
+.select('*, customers(id, name, phone, address, city)')
       .eq('entry_type', 'payment')
       .order('date', { ascending: true })
       .order('created_at', { ascending: true });
+
 
     if (customer_id) {
       query = query.eq('customer_id', customer_id);
@@ -7270,7 +6969,7 @@ app.get('/api/payments/history', authenticateToken, async (req, res) => {
       query = query.eq('bill_number', bill_number);
     }
 
-    const { start_date, end_date } = req.query;
+const { start_date, end_date } = req.query;
     if (start_date) {
       query = query.gte('date', start_date);
     }
@@ -7412,13 +7111,14 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
       body { background: white; padding: 5px; direction: rtl; }
       .bill-container { box-shadow: none; direction: rtl; padding: 10px; }
       @page { margin: 8mm; }
+
     }
   </style>
 </head>
 <body>
   <div class="bill-container">
     <div class="header">
-      <div class="logo-circle">
+<div class="logo-circle">
         <div>AK</div>
       </div>
       <div class="header-content">
@@ -7431,11 +7131,12 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
       <p style="font-weight: bold; font-size: 14px; margin-bottom: 4px;">${customer?.name || 'N/A'}</p>
       <p style="font-size: 12px;">فون: ${customer?.phone || 'N/A'}</p>
       <p style="font-size: 12px;">پتہ: ${customer?.address || 'N/A'}${customer?.city ? ', ' + customer.city : ''}</p>
+
     </div>
     <table class="products-table">
       <thead>
         <tr>
-          <th style="width: 40px;">نمبر</th>
+<th style="width: 40px;">نمبر</th>
           <th style="min-width: 120px;">پروڈکٹ</th>
           <th style="width: 60px;">میٹر</th>
           <th style="width: 90px;" class="text-left">فی میٹر قیمت</th>
@@ -7488,6 +7189,7 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
               <td style="text-align: right;">${p.entry_type === 'adjustment' ? 'ایڈجسٹمنٹ' : 'ادائیگی موصول'}</td>
               <td class="text-left" style="color: green; font-weight: bold;">Rs. ${parseFloat(p.credit || 0).toFixed(2)}</td>
               <td style="text-align: right;">${p.payment_method || 'نقد'}</td>
+
             </tr>
           `).join('')}
         </tbody>
@@ -7495,7 +7197,7 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
     ` : ''}
     <div class="summary-section">
       <div class="summary-row">
-        <span><strong>کل رقم:</strong></span>
+<span><strong>کل رقم:</strong></span>
         <span class="text-left" style="direction: ltr;"><strong>Rs. ${orderTotal.toFixed(2)}</strong></span>
       </div>
       <div class="summary-row">
@@ -7505,6 +7207,7 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
       <div class="summary-row total">
         <span><strong>باقی رقم:</strong></span>
         <span class="text-left" style="color: red; direction: ltr;"><strong>Rs. ${remaining.toFixed(2)}</strong></span>
+
       </div>
     </div>
   </div>
@@ -7639,7 +7342,7 @@ app.post('/api/orders/bulk-update-tracking', authenticateToken, async (req, res)
       try {
         const { seller_reference_number, tracking_id } = update;
 
-        if (!seller_reference_number) {
+if (!seller_reference_number) {
           errors.push({ ref: 'N/A', error: 'Reference number is required' });
           continue;
         }
@@ -7649,6 +7352,7 @@ app.post('/api/orders/bulk-update-tracking', authenticateToken, async (req, res)
 
         if (!cleanTrackingId) {
           errors.push({ ref: seller_reference_number, error: 'Tracking ID is required' });
+
           continue;
         }
 
@@ -7665,10 +7369,11 @@ app.post('/api/orders/bulk-update-tracking', authenticateToken, async (req, res)
           continue;
         }
 
-        // Update tracking ID with cleaned value
+// Update tracking ID with cleaned value
         const { error: updateError } = await supabase
           .from('orders')
           .update({ tracking_id: cleanTrackingId })
+
           .eq('id', order.id);
 
         if (updateError) {
@@ -7710,10 +7415,11 @@ app.post('/api/orders/bulk-return-scan', authenticateToken, async (req, res) => 
 
     for (const trackingId of tracking_ids) {
       try {
-        // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
         const cleanTrackingId = trackingId != null ? String(trackingId).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
         
         if (!cleanTrackingId) {
+
           continue;
         }
 
@@ -7721,7 +7427,8 @@ app.post('/api/orders/bulk-return-scan', authenticateToken, async (req, res) => 
         const { data: order, error: findError } = await supabase
           .from('orders')
           .select('id, seller_reference_number, status, product_codes, qty')
-          .eq('tracking_id', cleanTrackingId)
+.eq('tracking_id', cleanTrackingId)
+
           .eq('seller_id', seller_id)
           .single();
 
@@ -7835,10 +7542,11 @@ const loginToDigiPortal = async (credentials) => {
 const detectCourierService = (trackingId) => {
   if (!trackingId) return 'unknown';
   
-  // Convert to string, clean, and uppercase
+// Convert to string, clean, and uppercase
   const id = (trackingId != null ? String(trackingId).trim().replace(/[\s\-\[\]{}()]/g, '') : '').toUpperCase();
   
   if (!id) return 'unknown';
+
   
   // TCS tracking IDs usually start with specific patterns
   if (id.startsWith('TCS') || id.startsWith('1') || /^[0-9]{10,}$/.test(id)) {
@@ -7871,7 +7579,7 @@ const detectCourierService = (trackingId) => {
  */
 const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, credentials) => {
   try {
-    // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
     const cleanTrackingId = trackingId != null ? String(trackingId).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
     
     if (!cleanTrackingId) {
@@ -7880,6 +7588,7 @@ const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, cre
 
     // Auto-detect courier if not provided (use cleaned tracking ID)
     const detectedCourier = courierService || detectCourierService(cleanTrackingId);
+
 
     // Login first to get session token
     const token = await loginToDigiPortal(credentials);
@@ -7894,7 +7603,8 @@ const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, cre
     // Option 1: Unified endpoint (recommended if Digi portal has one)
     let response;
     try {
-      response = await axios.get(`${credentials.baseUrl}/tracking/${cleanTrackingId}`, {
+response = await axios.get(`${credentials.baseUrl}/tracking/${cleanTrackingId}`, {
+
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -7905,7 +7615,8 @@ const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, cre
       // If unified endpoint fails, try courier-specific endpoint
       if (detectedCourier !== 'unknown') {
         try {
-          response = await axios.get(`${credentials.baseUrl}/tracking/${detectedCourier.toLowerCase()}/${cleanTrackingId}`, {
+response = await axios.get(`${credentials.baseUrl}/tracking/${detectedCourier.toLowerCase()}/${cleanTrackingId}`, {
+
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -7975,10 +7686,11 @@ const fetchTrackingStatusFromDigiPortal = async (trackingId, courierService, cre
  */
 const syncOrderStatusFromDigiPortal = async (orderId, trackingId, sellerId, sellerEmail, courierService = null) => {
   try {
-    // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
     const cleanTrackingId = trackingId != null ? String(trackingId).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
     
     if (!cleanTrackingId) {
+
       return { updated: false, status: null, error: 'No tracking ID' };
     }
 
@@ -7997,8 +7709,9 @@ const syncOrderStatusFromDigiPortal = async (orderId, trackingId, sellerId, sell
     }
     
     // Fetch status from Digi portal (supports TCS, MNP, Leopard, etc.)
-    // Use cleaned tracking ID
+// Use cleaned tracking ID
     const digiStatus = await fetchTrackingStatusFromDigiPortal(cleanTrackingId, courierService, credentials);
+
     
     if (!digiStatus) {
       return { updated: false, status: null, error: 'Status not found or not delivered/returned' };
@@ -9684,273 +9397,7 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================
-// GIT OPERATIONS
-// ============================================
-
-// Push main branch to GitHub
-// POST: /api/git/push
-// Admin only endpoint to push code to GitHub
-app.post('/api/git/push', authenticateToken, async (req, res) => {
-  try {
-    // Only admin can push to GitHub
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin only.' });
-    }
-
-    const { branch = 'main', force = false } = req.body;
-    const output = [];
-    const errors = [];
-
-    console.log(`[Git Push] Starting git push to ${branch} by user ${req.user.email}`);
-
-    // Security: Validate branch name to prevent command injection
-    if (!/^[a-zA-Z0-9_-]+$/.test(branch)) {
-      return res.status(400).json({ error: 'Invalid branch name' });
-    }
-
-    // Get the project root directory
-    const projectRoot = __dirname;
-
-    try {
-      // Step 1: Check if we're in a git repository
-      output.push('Checking git repository...');
-      const { stdout: gitCheck, stderr: gitCheckErr } = await execAsync(
-        'git rev-parse --is-inside-work-tree',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      
-      if (gitCheckErr || !gitCheck.trim()) {
-        throw new Error('Not a git repository');
-      }
-      output.push('✅ Git repository detected');
-
-      // Step 2: Get current branch
-      const { stdout: currentBranch } = await execAsync(
-        'git branch --show-current',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      const currentBranchName = currentBranch.trim();
-      output.push(`Current branch: ${currentBranchName}`);
-
-      // Step 3: Check if there are uncommitted changes
-      const { stdout: status } = await execAsync(
-        'git status --porcelain',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      
-      if (status.trim()) {
-        output.push('⚠️  Warning: Uncommitted changes detected');
-        output.push('Uncommitted files:');
-        output.push(status.trim().split('\n').slice(0, 10).join('\n'));
-      } else {
-        output.push('✅ No uncommitted changes');
-      }
-
-      // Step 4: Fetch latest from remote
-      output.push('Fetching latest from remote...');
-      try {
-        const { stdout: fetchOutput, stderr: fetchErr } = await execAsync(
-          'git fetch origin',
-          { cwd: projectRoot, timeout: 30000 }
-        );
-        if (fetchOutput) output.push(fetchOutput);
-        if (fetchErr && !fetchErr.includes('up to date')) {
-          output.push(`Fetch: ${fetchErr}`);
-        }
-        output.push('✅ Fetch completed');
-      } catch (fetchError) {
-        output.push(`⚠️  Fetch warning: ${fetchError.message}`);
-      }
-
-      // Step 5: Check if branch exists locally
-      const { stdout: branches } = await execAsync(
-        'git branch --list',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      const branchExists = branches.includes(branch);
-      
-      if (!branchExists && currentBranchName !== branch) {
-        // Try to checkout the branch
-        output.push(`Branch ${branch} not found locally, attempting to checkout...`);
-        try {
-          await execAsync(
-            `git checkout ${branch}`,
-            { cwd: projectRoot, timeout: 10000 }
-          );
-          output.push(`✅ Switched to branch ${branch}`);
-        } catch (checkoutError) {
-          throw new Error(`Failed to checkout branch ${branch}: ${checkoutError.message}`);
-        }
-      }
-
-      // Step 6: Push to GitHub
-      output.push(`Pushing ${branch} to origin...`);
-      const pushCommand = force 
-        ? `git push origin ${branch} --force` 
-        : `git push origin ${branch}`;
-      
-      const { stdout: pushOutput, stderr: pushErr } = await execAsync(
-        pushCommand,
-        { cwd: projectRoot, timeout: 60000 }
-      );
-
-      if (pushOutput) {
-        output.push(pushOutput);
-      }
-      if (pushErr) {
-        // Git push often writes to stderr even on success
-        if (pushErr.includes('Everything up-to-date')) {
-          output.push('✅ Everything is up-to-date');
-        } else if (pushErr.includes('error') || pushErr.includes('fatal')) {
-          errors.push(pushErr);
-        } else {
-          output.push(pushErr);
-        }
-      }
-
-      // Step 7: Get final status
-      const { stdout: remoteStatus } = await execAsync(
-        `git status -sb`,
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      output.push('Current status:');
-      output.push(remoteStatus);
-
-      if (errors.length > 0) {
-        console.error('[Git Push] Errors:', errors);
-        return res.status(500).json({
-          success: false,
-          message: 'Git push completed with errors',
-          output: output.join('\n'),
-          errors: errors.join('\n')
-        });
-      }
-
-      console.log(`[Git Push] Successfully pushed ${branch} to GitHub`);
-      res.json({
-        success: true,
-        message: `Successfully pushed ${branch} branch to GitHub`,
-        branch,
-        output: output.join('\n'),
-        pushedBy: req.user.email,
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error) {
-      console.error('[Git Push] Error:', error);
-      errors.push(error.message);
-      
-      // Check if it's a git-related error
-      if (error.message.includes('not a git repository')) {
-        return res.status(400).json({
-          success: false,
-          error: 'Not a git repository',
-          message: 'This directory is not a git repository',
-          output: output.join('\n')
-        });
-      }
-
-      if (error.message.includes('timeout')) {
-        return res.status(504).json({
-          success: false,
-          error: 'Git operation timed out',
-          message: 'The git operation took too long to complete',
-          output: output.join('\n')
-        });
-      }
-
-      res.status(500).json({
-        success: false,
-        error: 'Git push failed',
-        message: error.message,
-        output: output.join('\n'),
-        errors: errors.join('\n')
-      });
-    }
-
-  } catch (error) {
-    console.error('[Git Push] Unexpected error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: error.message
-    });
-  }
-});
-
-// Get git status
-// GET: /api/git/status
-// Admin only endpoint to check git status
-app.get('/api/git/status', authenticateToken, async (req, res) => {
-  try {
-    // Only admin can check git status
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin only.' });
-    }
-
-    const projectRoot = __dirname;
-    const status = {};
-
-    try {
-      // Get current branch
-      const { stdout: currentBranch } = await execAsync(
-        'git branch --show-current',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      status.branch = currentBranch.trim();
-
-      // Get git status
-      const { stdout: gitStatus } = await execAsync(
-        'git status --porcelain',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      status.hasUncommittedChanges = gitStatus.trim().length > 0;
-      status.uncommittedFiles = gitStatus.trim().split('\n').filter(line => line.trim());
-
-      // Get last commit
-      const { stdout: lastCommit } = await execAsync(
-        'git log -1 --pretty=format:"%h - %an, %ar : %s"',
-        { cwd: projectRoot, timeout: 10000 }
-      );
-      status.lastCommit = lastCommit.trim();
-
-      // Get remote status
-      try {
-        const { stdout: remoteStatus } = await execAsync(
-          'git status -sb',
-          { cwd: projectRoot, timeout: 10000 }
-        );
-        status.remoteStatus = remoteStatus.trim();
-      } catch (err) {
-        status.remoteStatus = 'Unable to determine remote status';
-      }
-
-      res.json({
-        success: true,
-        status,
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error) {
-      if (error.message.includes('not a git repository')) {
-        return res.status(400).json({
-          success: false,
-          error: 'Not a git repository'
-        });
-      }
-      throw error;
-    }
-
-  } catch (error) {
-    console.error('[Git Status] Error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get git status',
-      message: error.message
-    });
-  }
-});
+//
 
 // Serve static files from React app in production
 // Check if build directory exists and NODE_ENV is production
@@ -10054,9 +9501,10 @@ try {
     console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET_KEY ? '✅ Set' : '⚠️  Using default'}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Listening on: ${HOST}:${PORT}`);
-    console.log(`⏱️  Timeout: 30 minutes for bulk uploads (up to 1M orders)`);
+console.log(`⏱️  Timeout: 30 minutes for bulk uploads (up to 1M orders)`);
     console.log(`📦 File size limit: 500MB for bulk uploads`);
     console.log(`✅ Ledger Payment Endpoint: POST /api/ledger/payment`);
+
     console.log(`\n✅ Expenses Tracker Routes Registered:`);
     console.log(`   - GET  /api/expenses`);
     console.log(`   - GET  /api/expenses/summary`);
@@ -10065,13 +9513,14 @@ try {
     console.log(`   - POST /api/expenses`);
     console.log(`   - PUT  /api/expenses/:id`);
     console.log(`   - DELETE /api/expenses/:id\n`);
-    console.log(`\n✅ Ledger Khata Routes Registered:`);
+console.log(`\n✅ Ledger Khata Routes Registered:`);
     console.log(`   - GET  /api/ledger/khata`);
     console.log(`   - GET  /api/ledger/khata/pdf`);
     console.log(`   - GET  /api/ledger/khata/whatsapp\n`);
     console.log(`\n✅ Git Operations Routes Registered (Admin Only):`);
     console.log(`   - POST /api/git/push (Push main branch to GitHub)`);
     console.log(`   - GET  /api/git/status (Check git status)\n`);
+
     if (!isSupabaseConfigured) {
       console.log(`\n⚠️  WARNING: Supabase is not configured!`);
       console.log(`   Please set environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
@@ -10079,7 +9528,7 @@ try {
     }
   });
 
-  // Configure server timeouts for large bulk uploads (up to 1M orders, 30 minutes)
+// Configure server timeouts for large bulk uploads (up to 1M orders, 30 minutes)
   server.timeout = 1800000; // 30 minutes in milliseconds
   server.keepAliveTimeout = 1800000; // Keep connections alive for 30 minutes
   server.headersTimeout = 1801000; // Headers timeout slightly longer than keepAlive

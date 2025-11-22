@@ -65,11 +65,14 @@ CREATE TABLE transactions (
     payment_method TEXT CHECK (payment_method IN ('Cash', 'Bank Transfer', 'JazzCash', 'EasyPaisa')),
     bank_note TEXT,
     attachment_url TEXT,
+<<<<<<< HEAD
     order_no TEXT,
     product TEXT,
     product_description TEXT,
     total_amount DECIMAL(15, 2),
     paid_amount DECIMAL(15, 2),
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -109,13 +112,19 @@ CREATE INDEX idx_orders_created_at ON orders(created_at);
 -- Transaction indexes
 CREATE INDEX idx_transactions_customer_id ON transactions(customer_id);
 CREATE INDEX idx_transactions_order_id ON transactions(order_id);
+<<<<<<< HEAD
 CREATE INDEX idx_transactions_order_no ON transactions(order_no);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 CREATE INDEX idx_transactions_date ON transactions(date);
 CREATE INDEX idx_transactions_created_at ON transactions(created_at);
 CREATE INDEX idx_transactions_payment_method ON transactions(payment_method);
 CREATE INDEX idx_transactions_balance ON transactions(balance);
 CREATE INDEX idx_transactions_date_customer ON transactions(date, customer_id);
+<<<<<<< HEAD
 CREATE INDEX idx_transactions_product ON transactions(product);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 
 -- Billing entries indexes
 CREATE INDEX idx_billing_entries_customer_id ON billing_entries(customer_id);

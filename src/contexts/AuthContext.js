@@ -84,6 +84,7 @@ export const AuthProvider = ({ children }) => {
       }, {
         timeout: 20000, // 20 seconds timeout for mobile
       });
+<<<<<<< HEAD
       
       // Validate response structure
       console.log('=== LOGIN RESPONSE ===');
@@ -118,6 +119,9 @@ export const AuthProvider = ({ children }) => {
         throw new Error('No user data received from server');
       }
       
+=======
+      const { access_token, user } = response.data;
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       setToken(access_token);
       setUser(user);
       localStorage.setItem('token', access_token);
@@ -126,6 +130,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user };
     } catch (error) {
       console.error('=== LOGIN ERROR DETAILS ===');
+<<<<<<< HEAD
       console.error('Error object:', error);
       console.error('Error type:', error.constructor.name);
       console.error('Error code:', error.code);
@@ -139,6 +144,12 @@ export const AuthProvider = ({ children }) => {
         console.error('Error response headers:', error.response.headers);
       }
       console.error('Error request:', error.request);
+=======
+      console.error('Error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error response:', error.response);
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       console.error('API URL used:', getCurrentApiUrl());
       console.error('Current location:', window.location.href);
       console.error('============================');

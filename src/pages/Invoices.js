@@ -168,8 +168,13 @@ const Invoices = () => {
       const taxAmount = totalDeliveredSellerPrice * 0.04;
       
       // Recalculate total profit from displayed values (same as shown in invoice table)
+<<<<<<< HEAD
       // Total Profit = Delivered Profit + Return DC (as negative)
       // User requirement: returned DC shown as negative in profit column
+=======
+      // Total Profit = Delivered Profit - Return DC
+      // User requirement: returned DC should be subtracted from delivered profit total
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       let calculatedTotalProfit = 0;
       orders.forEach(order => {
         const statusLower = String(order.status || '').toLowerCase();
@@ -177,9 +182,14 @@ const Invoices = () => {
         if (norm === 'delivered') {
           calculatedTotalProfit += parseFloat(order.profit || 0);
         } else if (norm === 'returned' || norm === 'return') {
+<<<<<<< HEAD
           // Returned orders: show DC as negative in profit (subtracts from total)
           const dcValue = parseFloat(order.delivery_charge || 0);
           calculatedTotalProfit -= Math.abs(dcValue); // Subtract DC from total
+=======
+          // Returned orders: subtract DC from total profit (profit display is 0, but DC is subtracted)
+          calculatedTotalProfit -= parseFloat(order.delivery_charge || 0);
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         }
       });
 
@@ -214,7 +224,11 @@ const Invoices = () => {
         
         // Calculate profit based on order status
         // For delivered: use profit from order table (seller_price - shipper_price - dc)
+<<<<<<< HEAD
         // For returned: show delivery charge as negative/minus in profit (as per user requirement)
+=======
+        // For returned: profit is ZERO, DC is negative (as per user requirement)
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         let displayProfit = 0;
         let profitText = '';
         const statusLower = String(order.status || '').toLowerCase();
@@ -225,12 +239,21 @@ const Invoices = () => {
           profitText = displayProfit;
           totalProfit += displayProfit; // Add delivered profit
         } else if (norm === 'returned' || norm === 'return') {
+<<<<<<< HEAD
           // Returned orders: show delivery charge as negative/minus in profit column
           // User requirement: "Delivery charges Of returned status as minus in profit"
           const dcValue = parseFloat(order.delivery_charge || 0);
           displayProfit = -Math.abs(dcValue); // Show DC as negative in profit
           profitText = displayProfit; // Show negative DC value
           totalProfit += displayProfit; // Add negative DC to total (subtracts from total)
+=======
+          // Returned orders: profit displayed is ZERO, but DC is subtracted from total profit
+          // User requirement: "PROFITE ZERO HO JAYA GA OR DC RETURN MINUS MAIN A JAYA GI"
+          // Total profit = Delivered Profit - Return DC
+          displayProfit = 0;
+          profitText = 0; // Show 0 for returned orders in display
+          totalProfit -= parseFloat(order.delivery_charge || 0); // Subtract returned DC from total profit
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         } else {
           profitText = displayProfit;
         }

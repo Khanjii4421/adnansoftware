@@ -42,7 +42,11 @@ const Settings = () => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = getApiUrl();
+<<<<<<< HEAD
       const response = await axios.get(`${apiUrl}/health`, {
+=======
+      const response = await axios.get(`${apiUrl}/api/health`, {
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         headers: { Authorization: `Bearer ${token}` },
         timeout: 5000
       });
@@ -61,7 +65,11 @@ const Settings = () => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = getApiUrl();
+<<<<<<< HEAD
       const response = await axios.get(`${apiUrl}/test`, {
+=======
+      const response = await axios.get(`${apiUrl}/api/test`, {
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         headers: { Authorization: `Bearer ${token}` },
         timeout: 5000
       });

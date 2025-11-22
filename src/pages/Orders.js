@@ -1,11 +1,18 @@
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from 'react';
+=======
+import React, { useState, useEffect } from 'react';
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useErrorHandler } from '../components/ErrorHandler';
+<<<<<<< HEAD
 import { Html5Qrcode } from 'html5-qrcode';
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 
 import { API_URL, getApiUrl } from '../utils/api';
 
@@ -14,8 +21,11 @@ const Orders = () => {
   const { showError } = useErrorHandler();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+<<<<<<< HEAD
   const [totalOrders, setTotalOrders] = useState(0);
   const [fetchTime, setFetchTime] = useState(0);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sellerFilter, setSellerFilter] = useState('');
@@ -28,9 +38,12 @@ const Orders = () => {
   const [showReturnScan, setShowReturnScan] = useState(false);
   const [trackingId, setTrackingId] = useState('');
   const [editingTrackingId, setEditingTrackingId] = useState(null);
+<<<<<<< HEAD
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState('');
   const qrCodeScannerRef = useRef(null);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const [newTrackingId, setNewTrackingId] = useState('');
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const [orderFormData, setOrderFormData] = useState({
@@ -50,9 +63,12 @@ const Orders = () => {
   });
   const [kpiData, setKpiData] = useState(null);
   const [showKPIs, setShowKPIs] = useState(false);
+<<<<<<< HEAD
   const [editingOrder, setEditingOrder] = useState(null);
   const [editFormData, setEditFormData] = useState(null);
   const [deletingOrder, setDeletingOrder] = useState(null);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
 
   const fetchKPIData = async () => {
     try {
@@ -147,10 +163,14 @@ const Orders = () => {
   // Once stored in database, it is IMMUTABLE and never recalculated
   // This ensures: "jo cheez ek bar store ho jaye wo change na ho saka" (once stored, cannot be changed)
 
+<<<<<<< HEAD
   const fetchOrders = async (retryCount = 0) => {
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 2000; // 2 seconds
     
+=======
+  const fetchOrders = async () => {
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
@@ -170,6 +190,7 @@ const Orders = () => {
       if (searchTerm) params.append('search', searchTerm);
       if (todayOnly) params.append('today_only', 'true');
       if (paidFilter !== '') params.append('is_paid', paidFilter);
+<<<<<<< HEAD
       
       // Don't set limit - let backend fetch all orders (up to 100k for safety)
       // Backend will handle the limit internally to prevent timeout
@@ -212,6 +233,24 @@ const Orders = () => {
           console.log(`[Frontend] Order ${index + 1} - ID: ${order.id}, shipper_price: ${order.shipper_price} (type: ${typeof order.shipper_price})`);
         });
       }
+=======
+
+      const url = `${currentApiUrl}/orders?${params}`;
+      console.log('[Orders] Request URL:', url);
+
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000 // 30 second timeout
+      });
+      console.log('Orders response:', response.data);
+      const ordersData = response.data.orders || [];
+      console.log('Orders count:', ordersData.length);
+      
+      // Debug: Check shipper_price values
+      ordersData.forEach((order, index) => {
+        console.log(`[Frontend] Order ${index + 1} - ID: ${order.id}, shipper_price: ${order.shipper_price} (type: ${typeof order.shipper_price})`);
+      });
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       
       setOrders(ordersData);
     } catch (error) {
@@ -227,6 +266,7 @@ const Orders = () => {
         }
       });
       
+<<<<<<< HEAD
       // Retry logic for timeout and network errors
       if (
         (error.code === 'ECONNABORTED' || error.message.includes('timeout')) &&
@@ -251,6 +291,10 @@ const Orders = () => {
       if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
         errorMessage = 'Request timeout: Too many orders to load. Try using filters to reduce the dataset.';
       } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+=======
+      let errorMessage = 'Failed to fetch orders';
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
         errorMessage = 'Network error: Cannot connect to server. Please check if the backend server is running.';
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
@@ -260,8 +304,11 @@ const Orders = () => {
       
       showError(errorMessage);
       setOrders([]);
+<<<<<<< HEAD
       setTotalOrders(0);
       setFetchTime(0);
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
     } finally {
       setLoading(false);
     }
@@ -287,15 +334,23 @@ const Orders = () => {
       const token = localStorage.getItem('token');
       
       // Show progress message for large files
+<<<<<<< HEAD
       const fileSizeMB = (uploadFile.size / 1024 / 1024).toFixed(2);
       alert(`Uploading ${uploadFile.name} (${fileSizeMB}MB)...\n\nThis may take up to 30 minutes for very large files (up to 1M orders).\nPlease keep this window open and wait for the completion message.`);
+=======
+      alert(`Uploading ${uploadFile.name}... This may take a few minutes for large files. Please wait.`);
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       
       const response = await axios.post(`${API_URL}/orders/bulk-upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
         },
+<<<<<<< HEAD
         timeout: 1800000, // 30 minutes timeout for large files (up to 1M to 100M rows orders)
+=======
+        timeout: 600000, // 10 minutes timeout for large files
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       });
       
       const { total_processed, total_created, total_errors, errors } = response.data;
@@ -324,7 +379,11 @@ const Orders = () => {
     } catch (error) {
       console.error('Upload error:', error);
       if (error.code === 'ECONNABORTED') {
+<<<<<<< HEAD
         alert('Upload timeout after 30 minutes. The file might be too large or the server is processing many orders.\n\nPlease try:\n1. Split the file into smaller batches (e.g., 100K orders per file)\n2. Check server logs for processing progress\n3. Try again during off-peak hours');
+=======
+        alert('Upload timeout. The file might be too large. Please try again or split the file into smaller batches.');
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       } else {
         alert(error.response?.data?.error || error.message || 'Upload failed. Please check the file format and try again.');
       }
@@ -384,6 +443,7 @@ const Orders = () => {
     }
   };
 
+<<<<<<< HEAD
   const handleEditOrder = (order) => {
     setEditingOrder(order);
     setEditFormData({
@@ -434,6 +494,8 @@ const Orders = () => {
     }
   };
 
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const handleConfirmOrder = async (orderId) => {
     try {
       const token = localStorage.getItem('token');
@@ -455,7 +517,10 @@ const Orders = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert('Order marked as return');
+<<<<<<< HEAD
       stopCameraScan();
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       setShowReturnScan(false);
       setTrackingId('');
       fetchOrders();
@@ -464,6 +529,7 @@ const Orders = () => {
     }
   };
 
+<<<<<<< HEAD
   // Start camera scanning
   const startCameraScan = async () => {
     try {
@@ -556,6 +622,8 @@ const Orders = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReturnScan]);
 
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
   const handleAddOrder = async (e) => {
     e.preventDefault();
     try {
@@ -1003,6 +1071,7 @@ Thank you for your order!`;
 
         {/* Orders Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
+<<<<<<< HEAD
           {/* Orders Count Header */}
           {!loading && orders && orders.length > 0 && (
             <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
@@ -1032,6 +1101,12 @@ Thank you for your order!`;
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
               <p className="mt-2 text-gray-600">Loading orders from database...</p>
               <p className="mt-1 text-xs text-gray-500">This may take a moment for large datasets</p>
+=======
+          {loading ? (
+            <div className="p-8 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              <p className="mt-2 text-gray-600">Loading orders...</p>
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
             </div>
           ) : !orders || orders.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -1292,6 +1367,7 @@ Thank you for your order!`;
                             ✓
                           </button>
                         )}
+<<<<<<< HEAD
                         <button
                           onClick={() => handleEditOrder(order)}
                           className="text-blue-600 hover:text-blue-900 text-lg"
@@ -1306,6 +1382,8 @@ Thank you for your order!`;
                         >
                           🗑️
                         </button>
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                       </td>
                     </tr>
                   ))}
@@ -1674,11 +1752,16 @@ Thank you for your order!`;
         {/* Return Scan Modal */}
         {showReturnScan && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+<<<<<<< HEAD
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+=======
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
               <h3 className="text-lg font-semibold mb-4">Return Scan</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Scan or enter the tracking ID to mark the order as return
               </p>
+<<<<<<< HEAD
               
               {/* Camera Scanner */}
               <div className="mb-4">
@@ -1717,22 +1800,40 @@ Thank you for your order!`;
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500"
                   autoFocus={!isScanning}
                   disabled={isScanning}
+=======
+              <form onSubmit={handleReturnScan}>
+                <input
+                  type="text"
+                  placeholder="Enter Tracking ID"
+                  value={trackingId}
+                  onChange={(e) => setTrackingId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500"
+                  autoFocus
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                 />
                 <div className="flex justify-end space-x-2">
                   <button
                     type="button"
+<<<<<<< HEAD
                     onClick={() => {
                       stopCameraScan();
                       setShowReturnScan(false);
                     }}
+=======
+                    onClick={() => setShowReturnScan(false)}
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                     className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
+<<<<<<< HEAD
                     disabled={!trackingId.trim() || isScanning}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+=======
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
                   >
                     Scan & Mark Return
                   </button>
@@ -1741,6 +1842,7 @@ Thank you for your order!`;
             </div>
           </div>
         )}
+<<<<<<< HEAD
 
         {/* Edit Order Modal */}
         {editingOrder && editFormData && (
@@ -1952,6 +2054,8 @@ Thank you for your order!`;
             </div>
           </div>
         )}
+=======
+>>>>>>> 8dc07ead76b7cbe28ec94158b4c8faa94539e79d
       </div>
     </Layout>
   );
