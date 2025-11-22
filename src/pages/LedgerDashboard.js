@@ -63,8 +63,11 @@ const LedgerDashboard = () => {
       setStats(statsResponse.data.stats);
       setAnalytics(analyticsResponse.data);
       setPartyStats(partyStatsResponse.data.partyStats || []);
+      console.log('[LedgerDashboard] Analytics data:', analyticsResponse.data);
+      console.log('[LedgerDashboard] Chart data:', analyticsResponse.data?.data || analyticsResponse.data?.chartData);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      console.error('Error details:', error.response?.data);
     } finally {
       setLoading(false);
     }
@@ -300,8 +303,16 @@ const LedgerDashboard = () => {
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               Debit vs Credit Trend ({periods.find(p => p.value === selectedPeriod)?.label})
             </h3>
+            {(!analytics?.data && !analytics?.chartData) || (analytics?.data?.length === 0 && analytics?.chartData?.length === 0) ? (
+              <div className="flex items-center justify-center h-[350px] text-gray-500">
+                <div className="text-center">
+                  <p className="text-lg mb-2">📊</p>
+                  <p>No data available for this period</p>
+                </div>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height={350}>
-              <AreaChart data={analytics?.chartData || []}>
+              <AreaChart data={analytics?.data || analytics?.chartData || []}>
                 <defs>
                   <linearGradient id="colorDebit" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#EF4444" stopOpacity={0.8}/>
@@ -353,6 +364,7 @@ const LedgerDashboard = () => {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
             {analytics?.summary && (
               <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                 <div>
@@ -384,8 +396,16 @@ const LedgerDashboard = () => {
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               Daily Comparison ({periods.find(p => p.value === selectedPeriod)?.label})
             </h3>
+            {(!analytics?.data && !analytics?.chartData) || (analytics?.data?.length === 0 && analytics?.chartData?.length === 0) ? (
+              <div className="flex items-center justify-center h-[350px] text-gray-500">
+                <div className="text-center">
+                  <p className="text-lg mb-2">📊</p>
+                  <p>No data available for this period</p>
+                </div>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={analytics?.chartData || []}>
+              <BarChart data={analytics?.data || analytics?.chartData || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis
                   dataKey="date"
@@ -413,6 +433,7 @@ const LedgerDashboard = () => {
                 <Bar dataKey="credit" fill="#10B981" name="Credit" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
             {analytics?.summary && (
               <div className="mt-4 text-center">
                 <p className="text-xs text-gray-500">
@@ -428,8 +449,16 @@ const LedgerDashboard = () => {
           <h3 className="text-lg font-bold text-gray-800 mb-4">
             Balance Trend ({periods.find(p => p.value === selectedPeriod)?.label})
           </h3>
+          {(!analytics?.data && !analytics?.chartData) || (analytics?.data?.length === 0 && analytics?.chartData?.length === 0) ? (
+            <div className="flex items-center justify-center h-[300px] text-gray-500">
+              <div className="text-center">
+                <p className="text-lg mb-2">📊</p>
+                <p>No data available for this period</p>
+              </div>
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={analytics?.chartData || []}>
+            <LineChart data={analytics?.data || analytics?.chartData || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
               <XAxis
                 dataKey="date"
@@ -464,6 +493,7 @@ const LedgerDashboard = () => {
               />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </div>
 
         {/* Top Due Customers */}

@@ -329,54 +329,87 @@ const LedgerCustomers = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // First, generate and download the PDF
-      const response = await axios.get(`${API_URL}/ledger/customers/${customerId}/enhanced-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+      // Get customer ledger entries via WhatsApp endpoint
+      const response = await axios.get(`${API_URL}/ledger/khata/whatsapp?customer_id=${customerId}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Create blob and download link
-      const blob = new Blob([response.data], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
+      const { whatsapp_url, message, customer_name } = response.data;
       
-      // Open PDF in new window for user to review
-      const newWindow = window.open(url, '_blank');
-      
-      // Wait a bit then try to send via WhatsApp
-      setTimeout(() => {
-        // Format phone number (remove spaces, dashes, etc.)
+      // Open WhatsApp with the message
+      if (whatsapp_url) {
+        window.open(whatsapp_url, '_blank');
+        setMessage({ 
+          type: 'success', 
+          text: `WhatsApp message opened for ${customer_name}` 
+        });
+      } else {
+        // Fallback: format phone and create WhatsApp URL manually
         const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
         const whatsappNumber = cleanPhone.startsWith('92') ? cleanPhone : 
                               cleanPhone.startsWith('0') ? '92' + cleanPhone.substring(1) : 
                               '92' + cleanPhone;
         
-        // Create WhatsApp message
-        const message = encodeURIComponent(`Hello! Please find your ledger statement from Adnan Khaddar House.`);
-        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
+        const customer = customers.find(c => c.id === customerId);
+        const remainingBalance = customer ? calculateRemainingBalance(customer.balance) : 0;
+        const balanceMessage = `🧾 *Ledger Statement - ${customer_name || 'Customer'}*\n\n` +
+          `📊 *Account Summary:*\n` +
+          `Remaining Balance: Rs. ${remainingBalance.toFixed(2)}\n\n` +
+          `📞 *Contact:*\n` +
+          `Adnan Khaddar House\n` +
+          `Iqbal bazar, Kamalia, Pakistan\n` +
+          `Phone: +92 301 7323200\n\n` +
+          (remainingBalance > 0 ? `⚠️ *Please clear your outstanding balance of Rs. ${remainingBalance.toFixed(2)}*\n` : `✅ Your account is up to date.\n`);
         
-        // Open WhatsApp
+        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(balanceMessage)}`;
         window.open(whatsappUrl, '_blank');
-        
-        // Also provide download option
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `ledger-${customerId}-${new Date().toISOString().split('T')[0]}.html`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        
         setMessage({ 
           type: 'success', 
-          text: 'PDF opened. Please attach it to WhatsApp and send to the customer.' 
+          text: `WhatsApp message opened for ${customer_name || 'customer'}` 
         });
-      }, 1000);
+      }
       
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      setMessage({ 
-        type: 'error', 
-        text: 'Failed to generate PDF. Please try again.' 
-      });
+      console.error('Error sending WhatsApp:', error);
+      console.error('Error response:', error.response);
+      
+      // Fallback: Create simple WhatsApp message with balance
+      try {
+        const customer = customers.find(c => c.id === customerId);
+        if (customer) {
+          const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
+          const whatsappNumber = cleanPhone.startsWith('92') ? cleanPhone : 
+                                cleanPhone.startsWith('0') ? '92' + cleanPhone.substring(1) : 
+                                '92' + cleanPhone;
+          
+          const remainingBalance = calculateRemainingBalance(customer.balance);
+          const balanceMessage = `🧾 *Ledger Statement - ${customer.name}*\n\n` +
+            `📊 *Account Summary:*\n` +
+            `Remaining Balance: Rs. ${remainingBalance.toFixed(2)}\n\n` +
+            `📞 *Contact:*\n` +
+            `Adnan Khaddar House\n` +
+            `Iqbal bazar, Kamalia, Pakistan\n` +
+            `Phone: +92 301 7323200\n\n` +
+            (remainingBalance > 0 ? `⚠️ *Please clear your outstanding balance of Rs. ${remainingBalance.toFixed(2)}*\n` : `✅ Your account is up to date.\n`);
+          
+          const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(balanceMessage)}`;
+          window.open(whatsappUrl, '_blank');
+          setMessage({ 
+            type: 'success', 
+            text: `WhatsApp message opened for ${customer.name}` 
+          });
+        } else {
+          setMessage({ 
+            type: 'error', 
+            text: error.response?.data?.error || 'Failed to send WhatsApp message' 
+          });
+        }
+      } catch (fallbackError) {
+        setMessage({ 
+          type: 'error', 
+          text: error.response?.data?.error || 'Failed to send WhatsApp message' 
+        });
+      }
     }
   };
 

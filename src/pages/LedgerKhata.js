@@ -247,7 +247,9 @@ const LedgerKhata = () => {
       }
     } catch (error) {
       console.error('Error sending WhatsApp:', error);
-      setMessage({ type: 'error', text: error.response?.data?.error || 'Failed to generate WhatsApp message' });
+      console.error('Error response:', error.response);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to generate WhatsApp message';
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setLoadingWhatsApp(false);
     }

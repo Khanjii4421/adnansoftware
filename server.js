@@ -5541,6 +5541,142 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
   }
 });
 
+// Get ledger khata WhatsApp message
+app.get('/api/ledger/khata/whatsapp', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { customer_id, bill_number, start_date, end_date } = req.query;
+
+    if (!customer_id) {
+      return res.status(400).json({ error: 'Customer ID is required' });
+    }
+
+    // Build query
+    let query = supabase
+      .from('billing_entries')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          phone,
+          address,
+          city
+        )
+      `)
+      .eq('customer_id', customer_id)
+      .order('date', { ascending: true });
+
+    if (bill_number) {
+      query = query.eq('bill_number', bill_number);
+    }
+
+    if (start_date) {
+      query = query.gte('date', `${start_date}T00:00:00.000Z`);
+    }
+
+    if (end_date) {
+      query = query.lte('date', `${end_date}T23:59:59.999Z`);
+    }
+
+    const { data: billingEntries, error } = await query;
+
+    if (error) {
+      console.error('[Ledger Khata WhatsApp] Query error:', error);
+      throw error;
+    }
+
+    if (!billingEntries || billingEntries.length === 0) {
+      return res.status(404).json({ error: 'No entries found for this customer' });
+    }
+
+    // Use processLedgerEntries to get formatted entries
+    const { entries: ledgerEntries, totals } = processLedgerEntries(billingEntries || []);
+
+    // Get customer info
+    const customer = ledgerEntries[0]?.customer || billingEntries[0]?.customers;
+    
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Format dates for display
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric' 
+        });
+      } catch (e) {
+        return dateStr;
+      }
+    };
+
+    // Build WhatsApp message
+    let message = `🧾 *Ledger Khata - ${customer.name || 'Customer'}*\n\n`;
+    
+    // Add recent entries (last 10)
+    const recentEntries = ledgerEntries.slice(-10);
+    if (recentEntries.length > 0) {
+      message += `📋 *Recent Entries:*\n`;
+      recentEntries.forEach((entry, index) => {
+        const date = formatDate(entry.date);
+        const billNumber = entry.bill_number || '-';
+        const description = entry.description || '-';
+        const debit = parseFloat(entry.debit || 0);
+        const credit = parseFloat(entry.credit || 0);
+        const balance = parseFloat(entry.balance || 0);
+        
+        message += `\n${index + 1}. ${date} - ${billNumber}\n`;
+        message += `   ${description}\n`;
+        if (debit > 0) message += `   Debit: Rs. ${debit.toFixed(2)}\n`;
+        if (credit > 0) message += `   Credit: Rs. ${credit.toFixed(2)}\n`;
+        message += `   Balance: Rs. ${balance.toFixed(2)}\n`;
+      });
+    }
+
+    // Add summary
+    message += `\n━━━━━━━━━━━━━━━━━━\n`;
+    message += `💰 *Summary:*\n`;
+    message += `Total Debit: Rs. ${(totals.total_debit || 0).toFixed(2)}\n`;
+    message += `Total Credit: Rs. ${(totals.total_credit || 0).toFixed(2)}\n`;
+    message += `Remaining Balance: Rs. ${(totals.remaining_balance || 0).toFixed(2)}\n`;
+    
+    if (totals.remaining_balance > 0) {
+      message += `\n⚠️ *Outstanding Balance: Rs. ${(totals.remaining_balance || 0).toFixed(2)}*\n`;
+      message += `Please clear your balance at your earliest convenience.\n`;
+    } else {
+      message += `\n✅ Your account is up to date.\n`;
+    }
+
+    message += `\n📞 *Contact:*\n`;
+    message += `Adnan Khaddar House\n`;
+    message += `Iqbal bazar, Kamalia, Pakistan\n`;
+    message += `Phone: +92 301 7323200\n`;
+
+    // Format phone number for WhatsApp
+    const phoneNumber = (customer.phone || '').replace(/\D/g, '');
+    const whatsappNumber = phoneNumber.startsWith('92') ? phoneNumber : `92${phoneNumber}`;
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+
+    res.json({
+      whatsapp_url: whatsappUrl,
+      message: message,
+      customer_name: customer.name,
+      phone: customer.phone
+    });
+  } catch (error) {
+    console.error('Error generating ledger khata WhatsApp message:', error);
+    res.status(500).json({ error: 'Failed to generate WhatsApp message' });
+  }
+});
+
 // Get ledger entries (transactions with customer info and balances)
 app.get('/api/ledger/entries', authenticateToken, async (req, res) => {
   try {
