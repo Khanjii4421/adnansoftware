@@ -4616,7 +4616,9 @@ const processLedgerEntries = (entries) => {
   // Step 4: Process entries chronologically and calculate running balance
   allLedgerEntries.forEach(entry => {
     if (entry.type === 'bill') {
-      runningBalance += entry.debit;
+      const debitAmount = parseFloat(entry.debit || 0);
+      runningBalance += debitAmount;
+      console.log(`[Ledger Process Row] Bill Entry - Debit: ${debitAmount}, Credit: 0, Bill: ${entry.bill_number}, Running Balance: ${runningBalance}`);
       ledgerEntries.push({
         id: entry.id,
         entry_type: 'order',
@@ -4625,14 +4627,16 @@ const processLedgerEntries = (entries) => {
         customer_id: entry.customer_id,
         customer: entry.customer || null,
         description: entry.description || `Bill ${entry.bill_number}`,
-        debit: parseFloat(entry.debit || 0),
+        debit: debitAmount,
         credit: 0,
         balance: parseFloat(runningBalance),
         payment_method: entry.payment_method || 'Cash',
         product_name: entry.product_name || null
       });
     } else if (entry.type === 'payment') {
-      runningBalance -= entry.credit;
+      const creditAmount = parseFloat(entry.credit || 0);
+      runningBalance -= creditAmount;
+      console.log(`[Ledger Process Row] Payment Entry - Debit: 0, Credit: ${creditAmount}, Bill: ${entry.bill_number || 'N/A'}, Running Balance: ${runningBalance}`);
       ledgerEntries.push({
         id: entry.id,
         entry_type: 'payment',
@@ -4642,7 +4646,7 @@ const processLedgerEntries = (entries) => {
         customer: entry.customer || null,
         description: entry.description || `Payment${entry.bill_number ? ` for bill ${entry.bill_number}` : ''}`,
         debit: 0,
-        credit: parseFloat(entry.credit || 0),
+        credit: creditAmount,
         balance: parseFloat(runningBalance),
         payment_method: entry.payment_method || 'Cash',
         transaction_id: entry.transaction_id || null,
@@ -5002,263 +5006,156 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
       }
     };
 
-    const formatDateTime = (dateStr) => {
-      if (!dateStr) return 'N/A';
-      try {
-        const date = new Date(dateStr);
-        return date.toLocaleString('en-GB', { 
-          day: '2-digit', 
-          month: '2-digit', 
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      } catch (e) {
-        return dateStr;
-      }
-    };
-
-    // Generated date
-    const generatedDate = new Date();
-    const generatedDateStr = generatedDate.toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    // Date filter info
-    let dateFilterInfo = '';
-    if (start_date || end_date) {
-      const startDateStr = start_date ? formatDate(start_date) : 'Start';
-      const endDateStr = end_date ? formatDate(end_date) : 'End';
-      dateFilterInfo = `${startDateStr} ${end_date ? 'تا' : ''} ${endDateStr}`;
-    }
-
     const htmlContent = `
 <!DOCTYPE html>
-<html dir="rtl">
+<html>
 <head>
   <meta charset="utf-8">
-  <title>Ledger Khata - ${customer ? customer.name : 'All Customers'}</title>
+  <title>Ledger Khata</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; 
-      padding: 20px; 
-      background: #f5f5f5; 
-      direction: rtl; 
-    }
-    .container { 
-      max-width: 1200px; 
-      margin: 0 auto; 
-      background: white; 
-      padding: 20px; 
-      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
-    }
-    .header { 
-      text-align: center; 
-      margin-bottom: 20px; 
-      border-bottom: 3px solid #4F46E5; 
-      padding-bottom: 15px; 
-    }
-    .logo-section {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 15px;
-      margin-bottom: 10px;
-    }
-    .logo-circle { 
-      width: 60px; 
-      height: 60px; 
-      border-radius: 50%; 
-      background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      color: white; 
-      font-size: 24px; 
-      font-weight: bold; 
-    }
-    .header h1 { 
-      color: #4F46E5; 
-      font-size: 28px; 
-      margin-bottom: 5px; 
-      font-weight: bold; 
-    }
-    .date-filter-info {
-      margin-top: 10px;
-      font-size: 14px;
-      color: #666;
-      padding: 8px;
-      background: #f0f9ff;
-      border-radius: 4px;
-      display: inline-block;
-    }
-    .generated-date {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #999;
-    }
-    .customer-info { 
-      background: #f9f9f9; 
-      padding: 12px; 
-      border-radius: 4px; 
-      margin-bottom: 20px; 
-      direction: rtl; 
-    }
-    .customer-info p { 
-      margin: 4px 0; 
-      font-size: 13px; 
-    }
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin: 15px 0; 
-      direction: rtl; 
-      font-size: 12px; 
-    }
-    th { 
-      background: #4F46E5; 
-      color: white; 
-      padding: 10px 6px; 
-      text-align: right; 
-      font-weight: bold; 
-      font-size: 12px; 
-    }
-    td { 
-      padding: 8px 6px; 
-      border-bottom: 1px solid #e0e0e0; 
-      text-align: right; 
-      font-size: 12px; 
-    }
-    tr:nth-child(even) { 
-      background-color: #f9f9f9; 
-    }
-    .text-left { 
-      text-align: left; 
-      direction: ltr; 
-    }
-    .summary-section { 
-      margin-top: 20px; 
-      border-top: 2px solid #4F46E5; 
-      padding-top: 15px; 
-      direction: rtl; 
-    }
-    .summary-row { 
-      display: flex; 
-      justify-content: space-between; 
-      padding: 6px 0; 
-      font-size: 13px; 
-      direction: rtl; 
-    }
-    .summary-row.total { 
-      font-size: 16px; 
-      font-weight: bold; 
-      border-top: 2px solid #4F46E5; 
-      margin-top: 8px; 
-      padding-top: 10px; 
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; direction: rtl; }
+    .urdu { font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; direction: rtl; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); direction: rtl; }
+    .header { margin-bottom: 30px; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; }
+    .header-top { display: flex; align-items: center; justify-content: center; margin-bottom: 15px; }
+    .logo-section { display: flex; align-items: center; gap: 15px; justify-content: center; }
+    .logo-circle { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
+    .logo-circle div { color: white; font-size: 32px; font-weight: bold; }
+    .company-info { text-align: center; direction: ltr; }
+    .company-info h1 { color: #1e40af; font-size: 28px; margin: 0; font-weight: bold; }
+    .company-info p { color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600; }
+    .admin-info { text-align: left; direction: ltr; font-size: 12px; color: #666; }
+    .admin-info p { margin: 2px 0; }
+    .header-title { margin-top: 15px; }
+    .header-title h1 { color: #4F46E5; font-size: 36px; margin-bottom: 10px; font-weight: bold; }
+    .header-title h2 { color: #666; font-size: 18px; }
+    .title-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; direction: rtl; }
+    .title-left { flex: 1; text-align: left; }
+    .title-right { flex: 1; text-align: right; }
+    .customer-name-section { padding: 12px; background: #f0f9ff; border: 2px solid #1e40af; border-radius: 8px; direction: rtl; display: inline-block; }
+    .customer-name-section p { margin: 3px 0; }
+    .khata-title { font-size: 48px; font-weight: bold; color: #4F46E5; }
+    .signature-section { margin-top: 50px; padding-top: 30px; border-top: 2px solid #4F46E5; direction: rtl; }
+    .signature-box { margin-top: 40px; text-align: left; direction: ltr; }
+    .signature-line { border-top: 2px solid #333; width: 250px; margin-top: 60px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; direction: rtl; border: 1px solid #333; }
+    th { background: #4F46E5; color: white; padding: 10px 6px; text-align: right; font-weight: bold; border: 1px solid #333; }
+    th .urdu { font-size: 0.9em; }
+    td { padding: 8px 6px; border: 1px solid #333; text-align: right; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    .text-right { text-align: left; direction: ltr; }
+    .text-left { text-align: right; }
+    .text-center { text-align: center; }
+    td.text-right { direction: ltr; }
+    .summary { margin-top: 30px; border-top: 3px solid #4F46E5; padding-top: 20px; direction: rtl; }
+    .summary-row { display: flex; justify-content: space-between; padding: 12px 0; font-size: 20px; direction: rtl; font-weight: bold; }
+    .summary-row.total { font-size: 28px; font-weight: bold; border-top: 3px solid #4F46E5; margin-top: 15px; padding-top: 20px; }
+    .positive { color: green; font-weight: bold; }
+    .negative { color: red; font-weight: bold; }
     @media print {
-      body { background: white; padding: 5px; direction: rtl; }
-      .container { box-shadow: none; padding: 10px; }
-      @page { margin: 8mm; }
+      body { background: white; padding: 10px; direction: rtl; }
+      .container { box-shadow: none; direction: rtl; }
+      @page { margin: 10mm; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo-section">
-        <div class="logo-circle">AK</div>
-        <div>
-          <h1>ADNAN KHADAR HOUSE</h1>
-          <p style="font-size: 14px; color: #666; margin-top: 5px;">Ledger Khata <span style="font-family: 'Noto Nastaliq Urdu';">لیجر کھاتہ</span></p>
+      <div class="header-top">
+        <div class="logo-section">
+          <div class="logo-circle">
+            <div>AK</div>
+          </div>
+          <div class="company-info">
+            <h1>ADNAN KHADAR HOUSE</h1>
+          </div>
         </div>
       </div>
-      ${dateFilterInfo ? `
-      <div class="date-filter-info">
-        <strong>دورانیہ:</strong> ${dateFilterInfo}
-      </div>
-      ` : ''}
-      <div class="generated-date">
-        Generated on: ${generatedDateStr} | <span style="font-family: 'Noto Nastaliq Urdu';">تاریخ پیدائش:</span> ${generatedDateStr}
+      <div class="header-title">
+        <div class="title-row">
+          <div class="title-right">
+            <h1 class="urdu khata-title" style="text-align: right; direction: rtl; margin: 0; padding: 0; line-height: 1.2; font-size: 48px;">کھاتہ بنام</h1>
+          </div>
+          <div class="title-left">
+            ${customer ? `
+            <div class="customer-name-section">
+              <p class="urdu" style="font-size: 20px; font-weight: bold; color: #1e40af; direction: rtl; margin: 0;">${customer.name || 'N/A'}</p>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 12px;">
+          <h2 style="color: #1e40af; font-size: 22px; font-weight: bold; margin-bottom: 6px; direction: ltr;">ADNAN KHADAR</h2>
+        </div>
       </div>
     </div>
-    ${customer ? `
-    <div class="customer-info">
-      <p style="font-weight: bold; font-size: 15px; margin-bottom: 6px;">${customer.name || 'N/A'}</p>
-      <p style="font-size: 12px;">Phone: ${customer.phone || 'N/A'}</p>
-      <p style="font-size: 12px;">Address: ${customer.address || 'N/A'}${customer.city ? ', ' + customer.city : ''}</p>
-    </div>
-    ` : ''}
+    
     <table>
       <thead>
         <tr>
-          <th style="width: 80px;">Date & Time</th>
-          <th style="min-width: 150px;">Description</th>
-          <th style="width: 100px;">Bill Number</th>
-          <th style="min-width: 120px;">Product</th>
-          <th style="width: 90px;" class="text-left">Debit</th>
-          <th style="width: 90px;" class="text-left">Credit</th>
-          <th style="width: 90px;" class="text-left">Balance</th>
-          <th style="width: 100px;">Payment Method</th>
+          <th class="text-center urdu">نمبر شمار</th>
+          <th class="urdu">تاریخ</th>
+          <th class="urdu">بل نمبر</th>
+          <th class="urdu">تفصیل</th>
+          <th class="text-right urdu">بنام</th>
+          <th class="text-right urdu">جمع</th>
+          <th class="text-right urdu">بیلنس</th>
         </tr>
       </thead>
       <tbody>
-        ${(ledgerEntries || []).map(entry => {
-          const dateTime = formatDateTime(entry.date);
+        ${(ledgerEntries || []).map((entry, index) => {
+          const date = formatDate(entry.date);
           const description = entry.description || '-';
           const billNumber = entry.bill_number || '-';
-          const product = entry.product_name || '-';
           const debit = parseFloat(entry.debit || 0);
           const credit = parseFloat(entry.credit || 0);
           const balance = parseFloat(entry.balance || 0);
-          const paymentMethod = entry.payment_method || '-';
+          const receivedBy = entry.received_by || null;
+          const transactionId = entry.transaction_id || null;
+          
+          // Console log for debit and credit in row function
+          console.log(`[PDF Ledger Row] Last Edit - Debit: ${debit}, Credit: ${credit}, Bill: ${billNumber}, Description: ${description}, Balance: ${balance}`);
+          
+          // Build description with additional info
+          let fullDescription = description;
+          if (transactionId) {
+            fullDescription += `<br><small style="color: #666;">Txn: ${transactionId}</small>`;
+          }
+          if (receivedBy) {
+            fullDescription += `<br><small style="color: #666;">By: ${receivedBy}</small>`;
+          }
+          
+          // Alternate row colors for payments
+          const isPayment = entry.entry_type === 'payment';
+          const rowStyle = isPayment ? 'background-color: #f0fdf4;' : '';
           
           return `
-          <tr>
-            <td>${dateTime}</td>
-            <td>${description}</td>
-            <td>${billNumber}</td>
-            <td>${product}</td>
-            <td class="text-left">${debit > 0 ? `Rs. ${debit.toFixed(2)}` : '-'}</td>
-            <td class="text-left">${credit > 0 ? `Rs. ${credit.toFixed(2)}` : '-'}</td>
-            <td class="text-left">Rs. ${balance.toFixed(2)}</td>
-            <td>${paymentMethod}</td>
+          <tr style="${rowStyle}">
+            <td class="text-center">${index + 1}</td>
+            <td>${date}</td>
+            <td><strong>${billNumber}</strong></td>
+            <td class="text-left">${fullDescription}</td>
+            <td class="text-right negative"><strong>${debit > 0 ? `Rs. ${debit.toFixed(2)}` : '-'}</strong></td>
+            <td class="text-right positive"><strong>${credit > 0 ? `Rs. ${credit.toFixed(2)}` : '-'}</strong></td>
+            <td class="text-right negative"><strong>Rs. ${balance.toFixed(2)}</strong></td>
           </tr>
         `;
         }).join('')}
-      </tbody>
-      <tfoot>
-        <tr style="background: #e0f2fe; font-weight: bold;">
-          <td colspan="4" style="text-align: right; padding-right: 10px;">
-            Total:
-          </td>
-          <td class="text-left">Rs. ${(totals.total_debit || 0).toFixed(2)}</td>
-          <td class="text-left">Rs. ${(totals.total_credit || 0).toFixed(2)}</td>
-          <td class="text-left">Rs. ${(totals.remaining_balance || 0).toFixed(2)}</td>
-          <td></td>
+        <tr style="background-color: #e0e7ff; border-top: 3px solid #4F46E5;">
+          <td class="text-center" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">Total</td>
+          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
+          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
+          <td class="text-left" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
+          <td class="text-right negative" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${(totals.total_debit || 0).toFixed(2)}</td>
+          <td class="text-right positive" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${(totals.total_credit || 0).toFixed(2)}</td>
+          <td class="text-right negative" style="font-size: 26px; font-weight: bold; padding: 14px 6px;">Rs. ${(totals.remaining_balance || 0).toFixed(2)}</td>
         </tr>
-      </tfoot>
+      </tbody>
     </table>
-    <div class="summary-section">
-      <div class="summary-row">
-        <span><strong>Total Debit <span style="font-family: 'Noto Nastaliq Urdu';">کل ڈیبٹ</span>:</strong></span>
-        <span class="text-left" style="direction: ltr;"><strong>Rs. ${(totals.total_debit || 0).toFixed(2)}</strong></span>
-      </div>
-      <div class="summary-row">
-        <span><strong>Total Credit <span style="font-family: 'Noto Nastaliq Urdu';">کل کریڈٹ</span>:</strong></span>
-        <span class="text-left" style="direction: ltr;"><strong>Rs. ${(totals.total_credit || 0).toFixed(2)}</strong></span>
-      </div>
-      <div class="summary-row total">
-        <span><strong>Remaining Balance <span style="font-family: 'Noto Nastaliq Urdu';">باقی بیلنس</span>:</strong></span>
-        <span class="text-left" style="color: ${(totals.remaining_balance || 0) > 0 ? 'red' : 'green'}; direction: ltr;"><strong>Rs. ${(totals.remaining_balance || 0).toFixed(2)}</strong></span>
-      </div>
-    </div>
+    
   </div>
 </body>
 </html>
