@@ -50,6 +50,9 @@ const Orders = () => {
   });
   const [kpiData, setKpiData] = useState(null);
   const [showKPIs, setShowKPIs] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [editFormData, setEditFormData] = useState(null);
+  const [deletingOrder, setDeletingOrder] = useState(null);
 
   const fetchKPIData = async () => {
     try {
@@ -378,6 +381,56 @@ const Orders = () => {
       fetchOrders();
     } catch (error) {
       alert('Failed to update paid status');
+    }
+  };
+
+  const handleEditOrder = (order) => {
+    setEditingOrder(order);
+    setEditFormData({
+      seller_reference_number: order.seller_reference_number || '',
+      product_codes: order.product_codes || '',
+      customer_name: order.customer_name || '',
+      phone_number_1: order.phone_number_1 || '',
+      phone_number_2: order.phone_number_2 || '',
+      customer_address: order.customer_address || '',
+      city: order.city || '',
+      courier_service: order.courier_service || '',
+      seller_price: order.seller_price || '',
+      shipper_price: order.shipper_price || '',
+      delivery_charge: order.delivery_charge || '',
+      tracking_id: order.tracking_id || '',
+      status: order.status || 'pending'
+    });
+  };
+
+  const handleUpdateOrder = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_URL}/orders/${editingOrder.id}`, editFormData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEditingOrder(null);
+      setEditFormData(null);
+      fetchOrders();
+      alert('Order updated successfully');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Failed to update order');
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/orders/${deletingOrder.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDeletingOrder(null);
+      fetchOrders();
+      alert('Order deleted successfully');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Failed to delete order');
     }
   };
 
@@ -1239,6 +1292,20 @@ Thank you for your order!`;
                             ✓
                           </button>
                         )}
+                        <button
+                          onClick={() => handleEditOrder(order)}
+                          className="text-blue-600 hover:text-blue-900 text-lg"
+                          title="Edit Order"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => setDeletingOrder(order)}
+                          className="text-red-600 hover:text-red-900 text-lg"
+                          title="Delete Order"
+                        >
+                          🗑️
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1671,6 +1738,217 @@ Thank you for your order!`;
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Order Modal */}
+        {editingOrder && editFormData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4">Edit Order</h3>
+              <form onSubmit={handleUpdateOrder}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Order Number (Numeric Only) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.seller_reference_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, seller_reference_number: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Product Codes *</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.product_codes}
+                      onChange={(e) => {
+                        const codes = e.target.value.toUpperCase();
+                        const autoQty = calculateQtyFromProducts(codes);
+                        setEditFormData({ ...editFormData, product_codes: codes, qty: autoQty });
+                      }}
+                      placeholder="KS1,KS2 or KS1M9,KS2"
+                      style={{ textTransform: 'uppercase' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.customer_name}
+                      onChange={(e) => setEditFormData({ ...editFormData, customer_name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number 1 *</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.phone_number_1}
+                      onChange={(e) => setEditFormData({ ...editFormData, phone_number_1: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number 2</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.phone_number_2}
+                      onChange={(e) => setEditFormData({ ...editFormData, phone_number_2: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.city}
+                      onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer Address *</label>
+                    <textarea
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.customer_address}
+                      onChange={(e) => setEditFormData({ ...editFormData, customer_address: e.target.value })}
+                      rows="2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Courier Service</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.courier_service}
+                      onChange={(e) => setEditFormData({ ...editFormData, courier_service: e.target.value })}
+                    >
+                      <option value="">Select Courier</option>
+                      <option value="TCS">TCS</option>
+                      <option value="Leopard">Leopard</option>
+                      <option value="Call Courier">Call Courier</option>
+                      <option value="Trax">Trax</option>
+                      <option value="M&P">M&P</option>
+                      <option value="Courier Express">Courier Express</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tracking ID</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.tracking_id}
+                      onChange={(e) => setEditFormData({ ...editFormData, tracking_id: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="returned">Returned</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Seller Price (Rs.) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.seller_price}
+                      onChange={(e) => setEditFormData({ ...editFormData, seller_price: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Shipper Price (Rs.)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.shipper_price || ''}
+                      onChange={(e) => setEditFormData({ ...editFormData, shipper_price: e.target.value })}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Charge (Rs.) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editFormData.delivery_charge}
+                      onChange={(e) => setEditFormData({ ...editFormData, delivery_charge: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingOrder(null);
+                      setEditFormData(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Order
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deletingOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Order</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to delete order <strong>{deletingOrder.seller_reference_number}</strong>?
+                This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingOrder(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteOrder}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -1203,6 +1203,57 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete order
+app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { id } = req.params;
+
+    // Get the order first to check permissions and get product info for inventory
+    const { data: order, error: findError } = await supabase
+      .from('orders')
+      .select('seller_id, product_codes, qty, status')
+      .eq('id', id)
+      .single();
+
+    if (findError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Sellers can only delete their own orders
+    if (req.user.role === 'seller' && order.seller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // If order was confirmed or delivered, add inventory back before deleting
+    const orderStatus = (order.status || '').toLowerCase().trim();
+    if (['confirmed', 'delivered'].includes(orderStatus)) {
+      const productCodesArray = parseProductCodes(order.product_codes || '');
+      const orderQty = parseInt(order.qty || 1);
+      await addInventoryBack(order.seller_id, productCodesArray, orderQty);
+    }
+
+    // Delete the order
+    const { error: deleteError } = await supabase
+      .from('orders')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting order:', deleteError);
+      return res.status(500).json({ error: deleteError.message || 'Failed to delete order' });
+    }
+
+    res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting order:', error);
+    res.status(500).json({ error: 'Failed to delete order' });
+  }
+});
+
 // Update order
 app.put('/api/orders/:id', authenticateToken, async (req, res) => {
   try {
@@ -1270,8 +1321,49 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
       updateFields.delivery_charge = parseFloat(updateData.delivery_charge || 0);
     }
 
+    if (updateData.shipper_price !== undefined) {
+      const shipperPriceValue = updateData.shipper_price === '' || updateData.shipper_price === null ? null : parseFloat(updateData.shipper_price || 0);
+      updateFields.shipper_price = shipperPriceValue;
+    }
+
+    // Allow updating all order fields
+    if (updateData.seller_reference_number !== undefined) {
+      updateFields.seller_reference_number = updateData.seller_reference_number;
+    }
+
+    if (updateData.product_codes !== undefined) {
+      updateFields.product_codes = updateData.product_codes;
+      // Recalculate quantity from product codes
+      const productCodesArray = parseProductCodes(updateData.product_codes || '');
+      updateFields.qty = productCodesArray.length > 0 ? productCodesArray.length : 1;
+    }
+
+    if (updateData.customer_name !== undefined) {
+      updateFields.customer_name = updateData.customer_name;
+    }
+
+    if (updateData.phone_number_1 !== undefined) {
+      updateFields.phone_number_1 = updateData.phone_number_1;
+    }
+
+    if (updateData.phone_number_2 !== undefined) {
+      updateFields.phone_number_2 = updateData.phone_number_2 || null;
+    }
+
+    if (updateData.customer_address !== undefined) {
+      updateFields.customer_address = updateData.customer_address;
+    }
+
+    if (updateData.city !== undefined) {
+      updateFields.city = updateData.city;
+    }
+
+    if (updateData.courier_service !== undefined) {
+      updateFields.courier_service = updateData.courier_service || null;
+    }
+
     // Recalculate profit if prices changed
-    if (updateData.seller_price !== undefined || updateData.delivery_charge !== undefined) {
+    if (updateData.seller_price !== undefined || updateData.delivery_charge !== undefined || updateData.shipper_price !== undefined) {
       const { data: orderForProfit } = await supabase
         .from('orders')
         .select('seller_price, shipper_price, delivery_charge')
@@ -1282,7 +1374,9 @@ app.put('/api/orders/:id', authenticateToken, async (req, res) => {
         ? parseFloat(updateData.seller_price || 0)
         : parseFloat(orderForProfit?.seller_price || 0);
       
-      const shipperPrice = parseFloat(orderForProfit?.shipper_price || 0);
+      const shipperPrice = updateData.shipper_price !== undefined
+        ? (updateData.shipper_price === '' || updateData.shipper_price === null ? 0 : parseFloat(updateData.shipper_price || 0))
+        : parseFloat(orderForProfit?.shipper_price || 0);
       
       const deliveryCharge = updateData.delivery_charge !== undefined
         ? parseFloat(updateData.delivery_charge || 0)
@@ -4135,6 +4229,8 @@ app.delete('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
 // Get customer bulk upload template
 app.get('/api/ledger/customers/bulk-upload-template', authenticateToken, (req, res) => {
   try {
+    console.log('[API] Generating customer bulk upload template');
+    
     // Create comprehensive template with all supported columns
     const template = [
       {
@@ -4187,12 +4283,14 @@ app.get('/api/ledger/customers/bulk-upload-template', authenticateToken, (req, r
     
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     
+    console.log('[API] Customer template generated successfully, size:', buffer.length, 'bytes');
+    
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=customer-bulk-upload-template.xlsx');
     res.send(buffer);
   } catch (error) {
-    console.error('Error generating customer template:', error);
-    res.status(500).json({ error: 'Failed to generate template' });
+    console.error('[API] Error generating customer template:', error);
+    res.status(500).json({ error: 'Failed to generate template', details: error.message });
   }
 });
 
@@ -4206,11 +4304,40 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    console.log('[API] Bulk uploading customers, file:', req.file.originalname, 'size:', req.file.size);
+
     // Parse Excel/CSV file
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    console.log('[API] Parsed', jsonData.length, 'rows from file');
+    if (jsonData.length > 0) {
+      console.log('[API] First row sample:', JSON.stringify(jsonData[0]));
+      console.log('[API] Available columns:', Object.keys(jsonData[0]));
+      // Log types of common fields to help debug
+      const firstRow = jsonData[0];
+      if (firstRow) {
+        const nameVal = firstRow['Name'] || firstRow['name'] || '';
+        const phoneVal = firstRow['Phone'] || firstRow['phone'] || '';
+        const addressVal = firstRow['Address'] || firstRow['address'] || '';
+        const cityVal = firstRow['City'] || firstRow['city'] || '';
+        
+        console.log('[API] Field types:', {
+          Name: typeof nameVal,
+          Phone: typeof phoneVal,
+          Address: typeof addressVal,
+          City: typeof cityVal
+        });
+        console.log('[API] Sample values:', {
+          Name: nameVal,
+          Phone: phoneVal,
+          Address: addressVal,
+          City: cityVal
+        });
+      }
+    }
 
     if (jsonData.length === 0) {
       return res.status(400).json({ error: 'No data found in file' });
@@ -4219,91 +4346,161 @@ app.post('/api/ledger/customers/bulk-upload', authenticateToken, upload.single('
     let totalAdded = 0;
     let totalSkipped = 0;
     const errors = [];
+    const skipReasons = {
+      missingFields: 0,
+      duplicates: 0,
+      insertErrors: 0,
+      otherErrors: 0
+    };
 
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
       
       try {
         // Extract data from row (support multiple column name formats)
+        // Convert to string to handle numbers from Excel (phone numbers are often parsed as numbers)
+        const toString = (val) => {
+          if (val == null || val === undefined || val === '') return '';
+          // Handle numbers, booleans, and other types by converting to string
+          return String(val);
+        };
+        
         // Name variations
-        const name = row['Name'] || row['name'] || row['Customer Name'] || row['customer_name'] || 
+        const nameRaw = row['Name'] || row['name'] || row['Customer Name'] || row['customer_name'] || 
                      row['Customer'] || row['customer'] || row['Full Name'] || row['full_name'] || '';
+        const name = toString(nameRaw);
         
         // Phone variations
-        const phone = row['Phone'] || row['phone'] || row['Phone Number'] || row['phone_number'] || 
+        const phoneRaw = row['Phone'] || row['phone'] || row['Phone Number'] || row['phone_number'] || 
                       row['Mobile'] || row['mobile'] || row['Contact'] || row['contact'] || 
                       row['Phone No'] || row['phone_no'] || '';
+        const phone = toString(phoneRaw);
         
         // Address variations
-        const address = row['Address'] || row['address'] || row['Customer Address'] || row['customer_address'] || 
+        const addressRaw = row['Address'] || row['address'] || row['Customer Address'] || row['customer_address'] || 
                         row['Street'] || row['street'] || row['Location'] || row['location'] || '';
+        const address = toString(addressRaw);
         
         // City variations
-        const city = row['City'] || row['city'] || row['Town'] || row['town'] || '';
+        const cityRaw = row['City'] || row['city'] || row['Town'] || row['town'] || '';
+        const city = toString(cityRaw);
         
         // CNIC variations
-        const cnic = row['CNIC'] || row['cnic'] || row['CNIC Number'] || row['cnic_number'] || 
+        const cnicRaw = row['CNIC'] || row['cnic'] || row['CNIC Number'] || row['cnic_number'] || 
                      row['NIC'] || row['nic'] || row['ID Card'] || row['id_card'] || 
                      row['National ID'] || row['national_id'] || '';
+        const cnic = toString(cnicRaw);
+
+        // Trim all values
+        const trimmedName = name.trim();
+        const trimmedPhone = phone.trim();
+        const trimmedAddress = address.trim();
+        const trimmedCity = city.trim();
+        const trimmedCnic = cnic.trim();
 
         // Validate required fields
-        if (!name || !phone) {
-          errors.push({ row: i + 2, error: 'Name and phone are required' });
+        if (!trimmedName || !trimmedPhone) {
+          const missingFields = [];
+          if (!trimmedName) missingFields.push('name');
+          if (!trimmedPhone) missingFields.push('phone');
+          const errorMsg = `Missing required fields: ${missingFields.join(', ')}. Found columns: ${Object.keys(row).join(', ')}`;
+          errors.push({ row: i + 2, error: errorMsg, data: { name: trimmedName, phone: trimmedPhone } });
           totalSkipped++;
+          skipReasons.missingFields++;
           continue;
         }
 
-        // Check if customer with same phone already exists
+        // Normalize phone number - remove spaces, dashes, and other common separators
+        const normalizedPhone = trimmedPhone.replace(/[\s\-\(\)]/g, '');
+
+        if (!normalizedPhone) {
+          errors.push({ 
+            row: i + 2, 
+            error: 'Phone number is empty or invalid',
+            data: { name: trimmedName, phone: trimmedPhone }
+          });
+          totalSkipped++;
+          skipReasons.missingFields++;
+          continue;
+        }
+
+        // Check if customer with same phone already exists (exact match)
         const { data: existingCustomers, error: checkError } = await supabase
           .from('customers')
-          .select('id')
-          .eq('phone', phone.trim())
+          .select('id, name, phone')
+          .eq('phone', trimmedPhone)
           .limit(1);
 
         if (checkError) {
-          errors.push({ row: i + 2, error: `Error checking duplicate: ${checkError.message}` });
+          const errorMsg = `Error checking duplicate: ${checkError.message}`;
+          errors.push({ row: i + 2, error: errorMsg });
           totalSkipped++;
+          skipReasons.otherErrors++;
           continue;
         }
 
         if (existingCustomers && existingCustomers.length > 0) {
+          const existingCustomer = existingCustomers[0];
+          errors.push({ 
+            row: i + 2, 
+            error: `Duplicate phone: ${trimmedPhone} (already exists as: ${existingCustomer.name})`,
+            data: { name: trimmedName, phone: trimmedPhone }
+          });
           totalSkipped++;
-          continue; // Skip duplicate
+          skipReasons.duplicates++;
+          continue;
         }
 
         // Insert new customer
-        const { error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await supabase
           .from('customers')
           .insert({
-            name: name.trim(),
-            phone: phone.trim(),
-            address: address?.trim() || '',
-            city: city?.trim() || '',
-            cnic: cnic?.trim() || ''
-          });
+            name: trimmedName,
+            phone: trimmedPhone,
+            address: trimmedAddress || '',
+            city: trimmedCity || '',
+            cnic: trimmedCnic || ''
+          })
+          .select();
 
         if (insertError) {
-          errors.push({ row: i + 2, error: insertError.message });
+          const errorMsg = `Insert failed: ${insertError.message}`;
+          errors.push({ row: i + 2, error: errorMsg, data: { name: trimmedName, phone: trimmedPhone } });
           totalSkipped++;
+          skipReasons.insertErrors++;
         } else {
           totalAdded++;
+          if (i < 5) {
+            console.log('[API] Added customer:', trimmedName, trimmedPhone);
+          }
         }
       } catch (error) {
-        errors.push({ row: i + 2, error: error.message || 'Unknown error' });
+        const errorMsg = error.message || 'Unknown error';
+        errors.push({ row: i + 2, error: errorMsg, data: row });
         totalSkipped++;
+        skipReasons.otherErrors++;
+        console.error(`[API] Error processing row ${i + 2}:`, errorMsg);
       }
     }
+
+    console.log('[API] Bulk upload complete:', {
+      total: jsonData.length,
+      added: totalAdded,
+      skipped: totalSkipped,
+      reasons: skipReasons
+    });
 
     res.json({
       success: true,
       added: totalAdded,
       skipped: totalSkipped,
       total: jsonData.length,
-      errors: errors.slice(0, 10), // Return first 10 errors
+      errors: errors.slice(0, 50), // Return first 50 errors
+      skipReasons: skipReasons,
       message: `Imported ${totalAdded} customers${totalSkipped > 0 ? `, ${totalSkipped} skipped` : ''}`
     });
   } catch (error) {
-    console.error('Error bulk uploading customers:', error);
+    console.error('[API] Error bulk uploading customers:', error);
     res.status(500).json({ error: error.message || 'Failed to bulk upload customers' });
   }
 });
@@ -5238,14 +5435,24 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
       });
     };
     
-    // Create date range text in Urdu
-    let dateRangeText = '';
+    // Create date range text in Urdu for PDF header
+    let dateRangeTextUrdu = '';
     if (start_date && end_date) {
-      dateRangeText = `${formatDateForDisplay(start_date)} سے ${formatDateForDisplay(end_date)} تک`;
+      dateRangeTextUrdu = `${formatDateForDisplay(start_date)} سے ${formatDateForDisplay(end_date)} تک`;
     } else if (start_date) {
-      dateRangeText = `${formatDateForDisplay(start_date)} سے`;
+      dateRangeTextUrdu = `${formatDateForDisplay(start_date)} سے`;
     } else if (end_date) {
-      dateRangeText = `${formatDateForDisplay(end_date)} تک`;
+      dateRangeTextUrdu = `${formatDateForDisplay(end_date)} تک`;
+    }
+    
+    // Create date range text in English for customer name area
+    let dateRangeTextEnglish = '';
+    if (start_date && end_date) {
+      dateRangeTextEnglish = `From ${formatDateForDisplay(start_date)} To ${formatDateForDisplay(end_date)}`;
+    } else if (start_date) {
+      dateRangeTextEnglish = `From ${formatDateForDisplay(start_date)}`;
+    } else if (end_date) {
+      dateRangeTextEnglish = `To ${formatDateForDisplay(end_date)}`;
     }
 
     // Fetch khata entries directly from database - chronological order
@@ -5306,8 +5513,21 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
     console.log(`[PDF] Processed ${khataEntries.length} ledger entries: ${processedBillsCount} bills, ${processedPaymentsCount} payments`);
     console.log(`[PDF] This is a complete snapshot of ALL data visible in the table`);
 
-    // Get customer from first entry or filter
-    const customer = customer_id ? (khataEntries.find(e => e.customer)?.customer || null) : null;
+    // Get customer from first entry or filter, or fetch directly
+    let customer = customer_id ? (khataEntries.find(e => e.customer)?.customer || null) : null;
+    
+    // If customer_id is provided but customer not found in entries, fetch directly
+    if (customer_id && !customer) {
+      const { data: customerData, error: customerError } = await supabase
+        .from('customers')
+        .select('id, name, phone, address, city')
+        .eq('id', customer_id)
+        .maybeSingle();
+      
+      if (!customerError && customerData) {
+        customer = customerData;
+      }
+    }
 
     // Get admin user information for credentials
     // Handle gracefully to avoid console errors
@@ -5350,30 +5570,39 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
     .urdu { font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; direction: rtl; }
     .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); direction: rtl; }
     .header { margin-bottom: 30px; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; }
-    .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
-    .logo-section { display: flex; align-items: center; gap: 15px; }
+    .header-top { display: flex; align-items: center; justify-content: center; margin-bottom: 15px; }
+    .logo-section { display: flex; align-items: center; gap: 15px; justify-content: center; }
     .logo-circle { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #1e40af 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
     .logo-circle div { color: white; font-size: 32px; font-weight: bold; }
-    .company-info { text-align: right; direction: rtl; }
+    .company-info { text-align: center; direction: ltr; }
     .company-info h1 { color: #1e40af; font-size: 28px; margin: 0; font-weight: bold; }
     .company-info p { color: #10b981; font-size: 14px; margin: 5px 0 0 0; font-weight: 600; }
     .admin-info { text-align: left; direction: ltr; font-size: 12px; color: #666; }
     .admin-info p { margin: 2px 0; }
-    .header-title { text-align: center; margin-top: 15px; }
+    .header-title { margin-top: 15px; }
     .header-title h1 { color: #4F46E5; font-size: 36px; margin-bottom: 10px; font-weight: bold; }
     .header-title h2 { color: #666; font-size: 18px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; direction: rtl; }
-    th { background: #4F46E5; color: white; padding: 10px 6px; text-align: right; font-weight: bold; }
+    .title-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; direction: rtl; }
+    .title-left { flex: 1; text-align: left; }
+    .title-right { flex: 1; text-align: right; }
+    .customer-name-section { padding: 12px; background: #f0f9ff; border: 2px solid #1e40af; border-radius: 8px; direction: rtl; display: inline-block; }
+    .customer-name-section p { margin: 3px 0; }
+    .khata-title { font-size: 48px; font-weight: bold; color: #4F46E5; }
+    .signature-section { margin-top: 50px; padding-top: 30px; border-top: 2px solid #4F46E5; direction: rtl; }
+    .signature-box { margin-top: 40px; text-align: left; direction: ltr; }
+    .signature-line { border-top: 2px solid #333; width: 250px; margin-top: 60px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; direction: rtl; border: 1px solid #333; }
+    th { background: #4F46E5; color: white; padding: 10px 6px; text-align: right; font-weight: bold; border: 1px solid #333; }
     th .urdu { font-size: 0.9em; }
-    td { padding: 8px 6px; border-bottom: 1px solid #e0e0e0; text-align: right; }
+    td { padding: 8px 6px; border: 1px solid #333; text-align: right; }
     tr:nth-child(even) { background-color: #f9f9f9; }
     .text-right { text-align: left; direction: ltr; }
     .text-left { text-align: right; }
     .text-center { text-align: center; }
     td.text-right { direction: ltr; }
-    .summary { margin-top: 30px; border-top: 2px solid #4F46E5; padding-top: 20px; direction: rtl; }
-    .summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; direction: rtl; }
-    .summary-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #4F46E5; margin-top: 10px; padding-top: 15px; }
+    .summary { margin-top: 30px; border-top: 3px solid #4F46E5; padding-top: 20px; direction: rtl; }
+    .summary-row { display: flex; justify-content: space-between; padding: 12px 0; font-size: 20px; direction: rtl; font-weight: bold; }
+    .summary-row.total { font-size: 28px; font-weight: bold; border-top: 3px solid #4F46E5; margin-top: 15px; padding-top: 20px; }
     .positive { color: green; font-weight: bold; }
     .negative { color: red; font-weight: bold; }
     @media print {
@@ -5393,21 +5622,27 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
           </div>
           <div class="company-info">
             <h1>ADNAN KHADAR HOUSE</h1>
-            <p>High Quality</p>
           </div>
         </div>
-        ${adminUser ? `
-        <div class="admin-info">
-          <p><strong>Admin:</strong> ${(adminUser.name || '').replace(/[<>]/g, '') || 'N/A'}</p>
-          ${adminUser.email ? `<p><strong>Email:</strong> ${(adminUser.email || '').replace(/[<>]/g, '')}</p>` : ''}
-          <p><strong>Generated:</strong> ${currentDate}</p>
-        </div>
-        ` : `<div class="admin-info"><p><strong>Generated:</strong> ${currentDate}</p></div>`}
       </div>
       <div class="header-title">
-        <h1 class="urdu" style="font-size: 36px; font-weight: bold; margin-bottom: 15px;">لیجر کھاتہ</h1>
-        ${customer && customer_id ? `<p class="urdu" style="font-size: 20px; font-weight: bold; color: #333; margin-top: 10px; direction: rtl;">${customer.name || 'N/A'}</p>` : '<p class="urdu" style="font-size: 18px; margin-top: 10px; color: #666;">تمام کسٹمرز</p>'}
-        ${dateRangeText ? `<p class="urdu" style="font-size: 16px; color: #666; margin-top: 8px; direction: rtl; font-weight: 500;">یہ لیجر ${dateRangeText} ہے</p>` : ''}
+        <div class="title-row">
+          <div class="title-right">
+            <h1 class="urdu khata-title" style="text-align: right; direction: rtl; margin: 0; padding: 0; line-height: 1.2; font-size: 48px;">کھاتہ بنام</h1>
+          </div>
+          <div class="title-left">
+            ${customer && customer_id ? `
+            <div class="customer-name-section">
+              <p class="urdu" style="font-size: 20px; font-weight: bold; color: #1e40af; direction: rtl; margin: 0;">${(customer.name || 'N/A').replace(/[<>]/g, '')}</p>
+              ${dateRangeTextEnglish ? `<p style="font-size: 14px; color: #666; direction: ltr; margin-top: 5px; text-align: left;">${dateRangeTextEnglish}</p>` : ''}
+            </div>
+            ` : `<div><p class="urdu" style="font-size: 18px; color: #666; direction: rtl;">تمام کسٹمرز</p>${dateRangeTextEnglish ? `<p style="font-size: 14px; color: #666; direction: ltr; margin-top: 5px; text-align: left;">${dateRangeTextEnglish}</p>` : ''}</div>`}
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 12px;">
+          <h2 style="color: #1e40af; font-size: 22px; font-weight: bold; margin-bottom: 6px; direction: ltr;">ADNAN KHADAR</h2>
+          ${dateRangeTextUrdu ? `<p class="urdu" style="font-size: 16px; color: #666; direction: rtl; font-weight: 500;">یہ لیجر ${dateRangeTextUrdu} ہے</p>` : ''}
+        </div>
       </div>
     </div>
     
@@ -5420,7 +5655,7 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
           <th class="urdu">تفصیل</th>
           <th class="text-right urdu">بنام</th>
           <th class="text-right urdu">جمع</th>
-          <th class="text-right urdu">بقیہ</th>
+          <th class="text-right urdu">بیلنس</th>
         </tr>
       </thead>
       <tbody>
@@ -5453,27 +5688,18 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
           </tr>
           `;
         }).join('')}
+        <tr style="background-color: #e0e7ff; border-top: 3px solid #4F46E5;">
+          <td class="text-center" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">Total</td>
+          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
+          <td style="font-size: 20px; font-weight: bold; padding: 14px 6px;">-</td>
+          <td class="text-left urdu" style="font-size: 20px; font-weight: bold; padding: 14px 6px;">کل</td>
+          <td class="text-right negative" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.total_debit?.toFixed(2) || '0.00'}</td>
+          <td class="text-right positive" style="font-size: 22px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.total_credit?.toFixed(2) || '0.00'}</td>
+          <td class="text-right negative" style="font-size: 26px; font-weight: bold; padding: 14px 6px;">Rs. ${totals.remaining_balance?.toFixed(2) || '0.00'}</td>
+        </tr>
       </tbody>
     </table>
     
-    <div class="summary">
-      <div class="summary-row">
-        <span class="urdu"><strong>کل اندراجات:</strong></span>
-        <span><strong>${khataEntries.length}</strong></span>
-      </div>
-      <div class="summary-row">
-        <span class="urdu"><strong>کل بنام:</strong></span>
-        <span class="negative"><strong>Rs. ${totals.total_debit?.toFixed(2) || '0.00'}</strong></span>
-      </div>
-      <div class="summary-row">
-        <span class="urdu"><strong>کل جمع:</strong></span>
-        <span class="positive"><strong>Rs. ${totals.total_credit?.toFixed(2) || '0.00'}</strong></span>
-      </div>
-      <div class="summary-row total">
-        <span class="urdu"><strong>بقیہ:</strong></span>
-        <span class="negative"><strong>Rs. ${totals.remaining_balance?.toFixed(2) || '0.00'}</strong></span>
-      </div>
-    </div>
   </div>
 </body>
 </html>`;
@@ -6593,6 +6819,7 @@ app.post('/api/ledger/payment', authenticateToken, async (req, res) => {
     res.json({ 
       message: 'Payment recorded successfully',
       payment: paymentEntry,
+      payment_id: paymentEntry?.id,
       success: true
     });
   } catch (error) {
@@ -6608,6 +6835,238 @@ app.post('/api/ledger/payment', authenticateToken, async (req, res) => {
       details: error.message || 'Unknown error',
       code: error.code
     });
+  }
+});
+
+// Get payment receipt PDF (compact size for printing)
+app.get('/api/ledger/payment/:payment_id/receipt', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { payment_id } = req.params;
+
+    // Get payment entry with customer details
+    const { data: paymentEntry, error: paymentError } = await supabase
+      .from('billing_entries')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          phone,
+          address,
+          city
+        )
+      `)
+      .eq('id', payment_id)
+      .eq('entry_type', 'payment')
+      .single();
+
+    if (paymentError || !paymentEntry) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    const customer = paymentEntry.customers || {};
+    const paymentDate = paymentEntry.date ? new Date(paymentEntry.date) : new Date();
+    const formattedDate = paymentDate.toLocaleDateString('en-PK', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const formattedTime = paymentDate.toLocaleTimeString('en-PK', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Generate compact receipt HTML (small size, suitable for printing)
+    const htmlContent = `
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>Payment Receipt - ${paymentEntry.id.substring(0, 8)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page {
+      size: 80mm 150mm; /* Small receipt size */
+      margin: 5mm;
+    }
+    body {
+      font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif;
+      padding: 8px;
+      font-size: 11px;
+      direction: rtl;
+      background: white;
+      max-width: 70mm;
+      margin: 0 auto;
+    }
+    .urdu { font-family: 'Noto Nastaliq Urdu', 'Nori Nastaleeq', Arial, sans-serif; direction: rtl; }
+    .container {
+      width: 100%;
+      border: 2px solid #4F46E5;
+      border-radius: 4px;
+      padding: 8px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #4F46E5;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .header h1 {
+      color: #4F46E5;
+      font-size: 18px;
+      margin-bottom: 2px;
+      font-weight: bold;
+    }
+    .header h2 {
+      color: #666;
+      font-size: 14px;
+      font-weight: normal;
+    }
+    .logo {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #1e40af 0%, #10b981 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 4px;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .receipt-title {
+      text-align: center;
+      font-size: 16px;
+      font-weight: bold;
+      color: #4F46E5;
+      margin: 8px 0;
+      padding: 4px 0;
+      border-top: 1px solid #ddd;
+      border-bottom: 1px solid #ddd;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 11px;
+      border-bottom: 1px dashed #ddd;
+    }
+    .info-label {
+      font-weight: bold;
+      color: #666;
+      min-width: 80px;
+    }
+    .info-value {
+      color: #000;
+      text-align: left;
+      direction: ltr;
+    }
+    .amount-section {
+      background: #f0f9ff;
+      padding: 8px;
+      margin: 8px 0;
+      border: 2px solid #1e40af;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .amount-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .amount-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #1e40af;
+    }
+    .customer-info {
+      background: #f9f9f9;
+      padding: 6px;
+      margin: 6px 0;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .customer-name {
+      font-size: 13px;
+      font-weight: bold;
+      color: #1e40af;
+      margin-bottom: 4px;
+    }
+    .details-section {
+      margin: 8px 0;
+      font-size: 10px;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 2px solid #4F46E5;
+      font-size: 9px;
+      color: #666;
+    }
+    .payment-id {
+      font-family: monospace;
+      font-size: 9px;
+      color: #999;
+      margin-top: 4px;
+    }
+    @media print {
+      body {
+        padding: 0;
+        margin: 0;
+      }
+      .container {
+        border: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">AK</div>
+      <h1>ADNAN KHADAR HOUSE</h1>
+      <h2>Payment Receipt</h2>
+    </div>
+
+    <div class="amount-section">
+      <div class="amount-label">Amount Received</div>
+      <div class="amount-value">Rs. ${parseFloat(paymentEntry.credit || 0).toFixed(2)}</div>
+    </div>
+
+    <div class="customer-info">
+      <div class="customer-name">${(customer.name || 'N/A').replace(/[<>]/g, '')}</div>
+    </div>
+
+    <div class="details-section">
+      <div class="info-row">
+        <span class="info-label">Date:</span>
+        <span class="info-value">${formattedDate}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Method:</span>
+        <span class="info-value">${paymentEntry.payment_method || 'Cash'}</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Thank you!</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating payment receipt:', error);
+    res.status(500).json({ error: 'Failed to generate receipt' });
   }
 });
 

@@ -1,0 +1,40 @@
+name: Auto Deploy to Railway
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Build application
+        run: npm run build
+      
+      - name: Deploy to Railway
+        run: |
+          echo "Deployment triggered by GitHub push"
+          echo "Railway will automatically deploy from GitHub"
+          echo "Check Railway dashboard for deployment status"
+      
+      - name: Deployment Status
+        run: |
+          echo "✅ Code pushed to GitHub"
+          echo "✅ Railway will automatically deploy"
+          echo "🌐 Check Railway dashboard for live URL"
+

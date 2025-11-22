@@ -42,6 +42,18 @@ const LedgerKhata = () => {
   const [receivedBy, setReceivedBy] = useState('');
   const [paymentDescription, setPaymentDescription] = useState('');
   const [addingPayment, setAddingPayment] = useState(false);
+  const [lastPaymentId, setLastPaymentId] = useState(null);
+  
+  // Get last payment entry ID from entries
+  const getLastPaymentId = () => {
+    if (lastPaymentId) return lastPaymentId;
+    // Find last payment entry
+    const paymentEntries = entries.filter(e => e.entry_type === 'payment');
+    if (paymentEntries.length > 0) {
+      return paymentEntries[paymentEntries.length - 1].id;
+    }
+    return null;
+  };
 
   useEffect(() => {
     fetchCustomers();
@@ -323,7 +335,15 @@ const LedgerKhata = () => {
       
       console.log('[LedgerKhata] Payment response:', response.data);
 
-      setMessage({ type: 'success', text: 'Payment added successfully! It will appear in ledger as credit entry.' });
+      // Store payment ID for receipt download
+      const paymentId = response.data.payment_id || response.data.payment?.id;
+      setLastPaymentId(paymentId);
+
+      setMessage({ 
+        type: 'success', 
+        text: 'Payment added successfully! It will appear in ledger as credit entry.',
+        paymentId: paymentId
+      });
       setShowPaymentModal(false);
       setSelectedBill(null);
       setSelectedCustomerForPayment(null);
@@ -378,6 +398,38 @@ const LedgerKhata = () => {
     });
   };
 
+  const handleDownloadReceipt = async (paymentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/ledger/payment/${paymentId}/receipt`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      // Create blob URL and download
+      const blob = new Blob([response.data], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `payment-receipt-${paymentId.substring(0, 8)}.html`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      // Also open in new window for printing
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      }
+    } catch (error) {
+      console.error('Error downloading receipt:', error);
+      setMessage({ type: 'error', text: 'Failed to download receipt' });
+    }
+  };
+
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
@@ -430,19 +482,41 @@ const LedgerKhata = () => {
               message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}
           >
-            {message.text}
-            <button
-              onClick={() => setMessage({ type: '', text: '' })}
-              className="float-right font-bold"
-            >
-              ×
-            </button>
+            <div className="flex items-center justify-between">
+              <span>{message.text}</span>
+              <div className="flex items-center gap-2">
+                {message.paymentId && (
+                  <button
+                    onClick={() => handleDownloadReceipt(message.paymentId)}
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                    title="Download Payment Receipt"
+                  >
+                    📄 Download Receipt
+                  </button>
+                )}
+                <button
+                  onClick={() => setMessage({ type: '', text: '' })}
+                  className="font-bold hover:text-gray-900"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Action Buttons */}
         <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
           <div className="flex gap-2 flex-wrap">
+            {getLastPaymentId() && (
+              <button
+                onClick={() => handleDownloadReceipt(getLastPaymentId())}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
+                title="Download Last Payment Receipt"
+              >
+                📄 Receipt
+              </button>
+            )}
             <button
               onClick={() => handleAddPayment()}
               disabled={addingPayment || !filters.customer_id}

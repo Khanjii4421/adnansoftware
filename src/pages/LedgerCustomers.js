@@ -130,31 +130,40 @@ const LedgerCustomers = () => {
   const handleDownloadTemplate = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/ledger/customers/bulk-upload-template`, {
+      const url = `${API_URL}/ledger/customers/bulk-upload-template`;
+      
+      console.log('[LedgerCustomers] Downloading template from:', url);
+      
+      const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
 
+      console.log('[LedgerCustomers] Template download response:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error('Failed to download template');
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[LedgerCustomers] Template download failed:', response.status, errorText);
+        throw new Error(`Failed to download template: ${response.status} ${response.statusText}`);
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
+      link.href = blobUrl;
       link.setAttribute('download', 'customer-bulk-upload-template.xlsx');
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
 
       setMessage({
         type: 'success',
         text: 'Template downloaded successfully!'
       });
     } catch (error) {
+      console.error('[LedgerCustomers] Error downloading template:', error);
       setMessage({
         type: 'error',
         text: error.message || 'Failed to download template'
@@ -172,6 +181,8 @@ const LedgerCustomers = () => {
       const formData = new FormData();
       formData.append('file', file);
 
+      console.log('[LedgerCustomers] Uploading file:', file.name, 'size:', file.size);
+
       const response = await axios.post(`${API_URL}/ledger/customers/bulk-upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -179,16 +190,53 @@ const LedgerCustomers = () => {
         }
       });
 
+      console.log('[LedgerCustomers] Upload response:', response.data);
+
+      const { added = 0, skipped = 0, total = 0, errors = [], skipReasons = {} } = response.data;
+
+      // Build detailed message
+      let messageText = `Imported ${added} of ${total} customers`;
+      if (skipped > 0) {
+        messageText += `\n${skipped} skipped`;
+        
+        // Add breakdown of skip reasons
+        const reasons = [];
+        if (skipReasons.missingFields > 0) reasons.push(`${skipReasons.missingFields} missing name/phone`);
+        if (skipReasons.duplicates > 0) reasons.push(`${skipReasons.duplicates} duplicate phone numbers`);
+        if (skipReasons.insertErrors > 0) reasons.push(`${skipReasons.insertErrors} database errors`);
+        if (skipReasons.otherErrors > 0) reasons.push(`${skipReasons.otherErrors} other errors`);
+        
+        if (reasons.length > 0) {
+          messageText += `\nBreakdown: ${reasons.join(', ')}`;
+        }
+      }
+
+      // Show sample errors if any (first 5)
+      if (errors && errors.length > 0) {
+        console.log('[LedgerCustomers] Upload errors:', errors);
+        const sampleErrors = errors.slice(0, 5).map(err => `Row ${err.row}: ${err.error}`).join('\n');
+        const moreErrors = errors.length > 5 ? `\n... and ${errors.length - 5} more (check console)` : '';
+        
+        // Show all errors in console
+        console.warn('[LedgerCustomers] All errors:', errors);
+        
+        // Add sample errors to message
+        messageText += `\n\nSample errors:\n${sampleErrors}${moreErrors}`;
+      }
+
       setMessage({
-        type: 'success',
-        text: `Successfully imported ${response.data.added || 0} customers${response.data.skipped > 0 ? ` (${response.data.skipped} skipped)` : ''}`
+        type: added > 0 ? 'success' : 'error',
+        text: messageText
       });
+      
       setShowBulkForm(false);
       fetchCustomers();
     } catch (error) {
+      console.error('[LedgerCustomers] Upload error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to upload file';
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || 'Failed to upload file'
+        text: `Upload failed: ${errorMessage}`
       });
     } finally {
       setUploading(false);
@@ -329,10 +377,10 @@ const LedgerCustomers = () => {
               message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}
           >
-            {message.text}
+            <div className="whitespace-pre-line text-sm">{message.text}</div>
             <button
               onClick={() => setMessage({ type: '', text: '' })}
-              className="float-right font-bold"
+              className="float-right font-bold text-lg leading-none"
             >
               ×
             </button>
