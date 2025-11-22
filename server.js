@@ -7041,6 +7041,14 @@ const { start_date, end_date } = req.query;
 app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
   try {
     const { bill_number } = req.params;
+    
+    // Express automatically decodes URL-encoded parameters
+    // Log for debugging
+    console.log('[Bill PDF] Requested bill number:', bill_number);
+
+    if (!bill_number) {
+      return res.status(400).json({ error: 'Bill number is required' });
+    }
 
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -7053,13 +7061,23 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
       .eq('bill_number', bill_number)
       .order('created_at', { ascending: true });
 
-    if (entriesError) throw entriesError;
+    if (entriesError) {
+      console.error('Error fetching billing entries:', entriesError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch bill entries', 
+        details: entriesError.message 
+      });
+    }
 
     if (!entries || entries.length === 0) {
-      return res.status(404).json({ error: 'Bill not found' });
+      return res.status(404).json({ error: `Bill ${bill_number} not found` });
     }
 
     const customer = entries[0].customers;
+    if (!customer) {
+      return res.status(404).json({ error: `Customer information not found for bill ${bill_number}` });
+    }
+
     const orderEntries = entries.filter(e => e.entry_type === 'order');
     // Include all payment and adjustment entries (adjustments may include bad debts)
     const paymentEntries = entries.filter(e => e.entry_type === 'payment' || e.entry_type === 'adjustment');
@@ -7216,7 +7234,11 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error('Error generating bill PDF:', error);
-    res.status(500).json({ error: 'Failed to generate bill PDF' });
+    const errorMessage = error.message || 'Failed to generate bill PDF';
+    res.status(500).json({ 
+      error: 'Failed to generate bill PDF',
+      details: errorMessage
+    });
   }
 });
 

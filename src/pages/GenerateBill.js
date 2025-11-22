@@ -183,12 +183,18 @@ const GenerateBill = () => {
   const calculateTotals = () => {
     let total = 0;
     products.forEach(product => {
-      // Calculate price from meter_price * meters
-      const meterPrice = parseFloat(product.meter_price || 0);
-      const meters = parseFloat(product.meters || 0);
-      const discount = parseFloat(product.discount || 0);
-      const calculatedPrice = (meterPrice * meters) - discount;
-      total += calculatedPrice > 0 ? calculatedPrice : 0; // Ensure price doesn't go negative
+      // Use manual price if entered, otherwise calculate from meter_price * meters
+      let productPrice = parseFloat(product.price || 0);
+      
+      // If price is not set but we have meter_price and meters, calculate it
+      if (productPrice === 0 && product.meter_price && product.meters) {
+        const meterPrice = parseFloat(product.meter_price || 0);
+        const meters = parseFloat(product.meters || 0);
+        const discount = parseFloat(product.discount || 0);
+        productPrice = (meterPrice * meters) - discount;
+      }
+      
+      total += productPrice > 0 ? productPrice : 0; // Ensure price doesn't go negative
     });
     setTotalAmount(total);
     const credit = parseFloat(creditAmount || 0);
@@ -203,13 +209,27 @@ const GenerateBill = () => {
       [field]: value
     };
     
+    // If price is manually entered, keep it as is
+    if (field === 'price') {
+      setProducts(updatedProducts);
+      return;
+    }
+    
     // Auto-calculate price when meter_price, meters, or discount changes
+    // Only auto-calculate if both meter_price and meters have values
     if (field === 'meter_price' || field === 'meters' || field === 'discount') {
       const meterPrice = parseFloat(updatedProducts[index].meter_price || 0);
       const meters = parseFloat(updatedProducts[index].meters || 0);
       const discount = parseFloat(updatedProducts[index].discount || 0);
-      const calculatedPrice = (meterPrice * meters) - discount;
-      updatedProducts[index].price = (calculatedPrice > 0 ? calculatedPrice : 0).toFixed(2);
+      
+      // Auto-calculate only if both meter_price and meters are provided
+      if (meterPrice > 0 && meters > 0) {
+        const calculatedPrice = (meterPrice * meters) - discount;
+        updatedProducts[index].price = (calculatedPrice > 0 ? calculatedPrice : 0).toFixed(2);
+      }
+      // If discount changes but we don't have both meter_price and meters,
+      // and user has manually entered price, keep the manual price
+      // (discount will be handled in the final calculation)
     }
     
     setProducts(updatedProducts);
@@ -369,7 +389,8 @@ const GenerateBill = () => {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/bills/${lastGeneratedBill.bill_number}/pdf`, {
+      const encodedBillNumber = encodeURIComponent(lastGeneratedBill.bill_number);
+      const response = await axios.get(`${API_URL}/bills/${encodedBillNumber}/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
@@ -484,11 +505,37 @@ const GenerateBill = () => {
 
   const handleViewBill = async (bill) => {
     try {
+      // Validate bill object
+      if (!bill) {
+        setMessage({ type: 'error', text: 'Bill information is missing' });
+        return;
+      }
+
+      if (!bill.bill_number) {
+        setMessage({ type: 'error', text: 'Bill number is missing' });
+        return;
+      }
+
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/bills/${bill.bill_number}/pdf`, {
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required. Please login again.' });
+        return;
+      }
+
+      const encodedBillNumber = encodeURIComponent(bill.bill_number);
+      const apiUrl = `${API_URL}/bills/${encodedBillNumber}/pdf`;
+      console.log('Fetching bill PDF from:', apiUrl);
+      
+      const response = await axios.get(apiUrl, {
         headers: { Authorization: `Bearer ${token}` },
-        responseType: 'text'
+        responseType: 'text',
+        timeout: 30000 // 30 second timeout
       });
+      
+      if (!response.data) {
+        setMessage({ type: 'error', text: 'Bill data is empty' });
+        return;
+      }
       
       setSelectedBillForView({
         ...bill,
@@ -500,7 +547,32 @@ const GenerateBill = () => {
       fetchPaymentHistory(bill.bill_number);
     } catch (error) {
       console.error('Error fetching bill details:', error);
-      setMessage({ type: 'error', text: 'Failed to load bill details' });
+      
+      let errorMessage = 'Failed to load bill details';
+      
+      if (error.response) {
+        // Server responded with error status
+        const status = error.response.status;
+        const errorData = error.response.data;
+        
+        if (status === 404) {
+          errorMessage = `Bill ${bill?.bill_number || ''} not found`;
+        } else if (status === 401) {
+          errorMessage = 'Authentication failed. Please login again.';
+        } else if (status === 500) {
+          errorMessage = errorData?.error || 'Server error. Please try again later.';
+        } else {
+          errorMessage = errorData?.error || `Error ${status}: Failed to load bill details`;
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else {
+        // Something else happened
+        errorMessage = error.message || 'Failed to load bill details';
+      }
+      
+      setMessage({ type: 'error', text: errorMessage });
     }
   };
 
@@ -531,11 +603,32 @@ const GenerateBill = () => {
 
   const handleDownloadBillPDF = async (billNumber) => {
     try {
+      // Validate bill number
+      if (!billNumber) {
+        setMessage({ type: 'error', text: 'Bill number is missing' });
+        return;
+      }
+
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/bills/${billNumber}/pdf`, {
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required. Please login again.' });
+        return;
+      }
+
+      const encodedBillNumber = encodeURIComponent(billNumber);
+      const apiUrl = `${API_URL}/bills/${encodedBillNumber}/pdf`;
+      console.log('Downloading bill PDF from:', apiUrl);
+      
+      const response = await axios.get(apiUrl, {
         headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 30000 // 30 second timeout
       });
+      
+      if (!response.data || response.data.size === 0) {
+        setMessage({ type: 'error', text: 'Bill data is empty' });
+        return;
+      }
       
       const blob = new Blob([response.data], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
@@ -546,9 +639,36 @@ const GenerateBill = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      
+      setMessage({ type: 'success', text: 'Bill downloaded successfully' });
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      setMessage({ type: 'error', text: 'Failed to download PDF' });
+      
+      let errorMessage = 'Failed to download PDF';
+      
+      if (error.response) {
+        // Server responded with error status
+        const status = error.response.status;
+        const errorData = error.response.data;
+        
+        if (status === 404) {
+          errorMessage = `Bill ${billNumber || ''} not found`;
+        } else if (status === 401) {
+          errorMessage = 'Authentication failed. Please login again.';
+        } else if (status === 500) {
+          errorMessage = errorData?.error || 'Server error. Please try again later.';
+        } else {
+          errorMessage = errorData?.error || `Error ${status}: Failed to download PDF`;
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else {
+        // Something else happened
+        errorMessage = error.message || 'Failed to download PDF';
+      }
+      
+      setMessage({ type: 'error', text: errorMessage });
     }
   };
 
@@ -828,7 +948,8 @@ const GenerateBill = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(`${API_URL}/bills/${selectedBillForPayment.bill_number}/payment`, {
+      const encodedBillNumber = encodeURIComponent(selectedBillForPayment.bill_number);
+      const response = await axios.post(`${API_URL}/bills/${encodedBillNumber}/payment`, {
         amount: payment,
         payment_method: paymentMethodForPayment,
         received_by: paymentMethodForPayment === 'Cash' ? receivedByForPayment : null,
@@ -1296,12 +1417,14 @@ const GenerateBill = () => {
                       />
                     </div>
                     <div className="col-span-5 md:col-span-2">
-                      <label className="block text-xs text-gray-600 mb-1">Subtotal</label>
+                      <label className="block text-xs text-gray-600 mb-1">Price (Rs.) - Manual or Auto</label>
                       <input
-                        type="text"
-                        readOnly
-                        className="w-full px-2 md:px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                        value={`Rs. ${(parseFloat(product.price || 0)).toFixed(2)}`}
+                        type="number"
+                        step="0.01"
+                        className="w-full px-2 md:px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={product.price || ''}
+                        onChange={(e) => handleProductChange(index, 'price', e.target.value)}
+                        placeholder="Enter price or auto-calculate"
                       />
                     </div>
                     <div className="col-span-1 md:col-span-1">
