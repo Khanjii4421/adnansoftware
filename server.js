@@ -443,16 +443,21 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('[Login] Attempting login for email:', email ? email.toLowerCase().trim() : 'MISSING');
+
     if (!email || !password) {
+      console.log('[Login] ❌ Missing email or password');
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     if (!isSupabaseConfigured) {
-console.log('❌ Supabase not configured');
-      return res.status(500).json({ error: 'Database not configured' });
+      console.log('[Login] ❌ Supabase not configured');
+      console.log('[Login] Check environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
+      return res.status(500).json({ error: 'Database not configured. Please check your .env file and ensure Supabase credentials are set.' });
     }
 
-    console.log('✅ Supabase configured, querying user...');
+    console.log('[Login] ✅ Supabase configured, querying user...');
+    console.log('[Login] Querying email:', email.toLowerCase().trim());
 
     // Find user by email
     const { data: user, error: userError } = await supabase
@@ -461,34 +466,53 @@ console.log('❌ Supabase not configured');
       .eq('email', email.toLowerCase().trim())
       .single();
 
-console.log('User query result:', { 
+    console.log('[Login] User query result:', { 
       found: !!user, 
       error: userError ? userError.message : null,
-      userEmail: user?.email 
+      userEmail: user?.email,
+      userId: user?.id,
+      userRole: user?.role,
+      isActive: user?.is_active
     });
 
-    if (userError || !user) {
-      console.log('❌ User not found or query error:', userError?.message);
+    if (userError) {
+      console.log('[Login] ❌ Database query error:', userError.message);
+      console.log('[Login] Error code:', userError.code);
+      console.log('[Login] Error details:', userError);
+      
+      // More specific error for debugging
+      if (userError.code === 'PGRST116') {
+        console.log('[Login] ❌ User not found in database');
+      }
+      
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
+    if (!user) {
+      console.log('[Login] ❌ User not found in database');
+      console.log('[Login] Searched email:', email.toLowerCase().trim());
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     // Check if user is active
     if (!user.is_active) {
-console.log('❌ User account is deactivated');
+      console.log('[Login] ❌ User account is deactivated');
+      console.log('[Login] User ID:', user.id, 'Email:', user.email);
       return res.status(403).json({ error: 'Account is deactivated' });
     }
 
-    console.log('✅ User found and active, verifying password...');
+    console.log('[Login] ✅ User found and active, verifying password...');
+    console.log('[Login] User ID:', user.id, 'Email:', user.email, 'Role:', user.role);
     
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      console.log('❌ Invalid password');
+      console.log('[Login] ❌ Invalid password for user:', user.email);
+      console.log('[Login] Password hash exists:', !!user.password);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    console.log('✅ Password verified, generating token...');
+    console.log('[Login] ✅ Password verified, generating token...');
 
     // Generate JWT token
     const jwtSecret = process.env.JWT_SECRET_KEY || 'your-secret-key-change-in-production';
@@ -4890,6 +4914,9 @@ app.get('/api/ledger/khata', authenticateToken, async (req, res) => {
 
     const { customer_id, bill_number, start_date, end_date } = req.query;
 
+    console.log('[Ledger Khata] Date filter - start_date:', start_date, 'end_date:', end_date);
+    console.log('[Ledger Khata] All query params:', { customer_id, bill_number, start_date, end_date });
+
     // Build query
     let query = supabase
       .from('billing_entries')
@@ -4914,16 +4941,33 @@ app.get('/api/ledger/khata', authenticateToken, async (req, res) => {
     }
 
     if (start_date) {
-      query = query.gte('date', start_date);
+      // Use DATE casting for proper date comparison (ignores time component)
+      // Format: YYYY-MM-DD
+      console.log('[Ledger Khata] Start date filter:', start_date);
+      // Cast date column to DATE for comparison to ignore time component
+      query = query.gte('date', `${start_date}T00:00:00.000Z`);
     }
 
     if (end_date) {
-      query = query.lte('date', end_date);
+      // Use DATE casting for proper date comparison (ignores time component)
+      // Format: YYYY-MM-DD
+      console.log('[Ledger Khata] End date filter:', end_date);
+      // Cast date column to DATE for comparison to ignore time component
+      query = query.lte('date', `${end_date}T23:59:59.999Z`);
     }
 
     const { data: billingEntries, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Ledger Khata] Query error:', error);
+      throw error;
+    }
+
+    console.log('[Ledger Khata] Fetched entries:', billingEntries?.length || 0, 'entries');
+    if (billingEntries && billingEntries.length > 0) {
+      console.log('[Ledger Khata] First entry date:', billingEntries[0].date);
+      console.log('[Ledger Khata] Last entry date:', billingEntries[billingEntries.length - 1].date);
+    }
 
     // Use processLedgerEntries to get formatted entries
     const { entries: ledgerEntries, totals } = processLedgerEntries(billingEntries || []);
@@ -4971,16 +5015,27 @@ app.get('/api/ledger/khata/pdf', authenticateToken, async (req, res) => {
     }
 
     if (start_date) {
-      query = query.gte('date', start_date);
+      // Use DATE casting for proper date comparison (ignores time component)
+      // Format: YYYY-MM-DD
+      console.log('[Ledger Khata PDF] Start date filter:', start_date);
+      query = query.gte('date', `${start_date}T00:00:00.000Z`);
     }
 
     if (end_date) {
-      query = query.lte('date', end_date);
+      // Use DATE casting for proper date comparison (ignores time component)
+      // Format: YYYY-MM-DD
+      console.log('[Ledger Khata PDF] End date filter:', end_date);
+      query = query.lte('date', `${end_date}T23:59:59.999Z`);
     }
 
     const { data: billingEntries, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Ledger Khata PDF] Query error:', error);
+      throw error;
+    }
+    
+    console.log('[Ledger Khata PDF] Fetched entries:', billingEntries?.length || 0, 'entries');
 
     // Use processLedgerEntries to get formatted entries
     const { entries: ledgerEntries, totals } = processLedgerEntries(billingEntries || []);
