@@ -415,6 +415,7 @@ Thank you!`;
   };
 
   const selectedCustomer = customers.find(c => c.id === formData.customer_id);
+  const filteredCustomer = customers.find(c => c.id === filters.customer_id);
 
   return (
     <Layout>
@@ -473,6 +474,41 @@ Thank you!`;
             >
               ×
             </button>
+          </div>
+        )}
+
+        {/* Customer Balance Info - Show when a customer is selected */}
+        {filteredCustomer && (
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">{filteredCustomer.name}</h2>
+                <div className="mt-2 space-y-1 text-sm text-gray-600">
+                  {filteredCustomer.phone && (
+                    <p><span className="font-medium">Phone:</span> {filteredCustomer.phone}</p>
+                  )}
+                  {filteredCustomer.city && (
+                    <p><span className="font-medium">City:</span> {filteredCustomer.city}</p>
+                  )}
+                  {filteredCustomer.address && (
+                    <p><span className="font-medium">Address:</span> {filteredCustomer.address}</p>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600 mb-1">Remaining Balance</p>
+                <p className={`text-3xl font-bold ${
+                  (filteredCustomer.balance || 0) < 0 ? 'text-red-600' : 'text-green-600'
+                }`}>
+                  {formatCurrency(
+                    (filteredCustomer.balance || 0) < 0 ? Math.abs(filteredCustomer.balance || 0) : 0
+                  )}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {filteredCustomer.balance >= 0 ? 'Account is up to date' : 'Outstanding amount'}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

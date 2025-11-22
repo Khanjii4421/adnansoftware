@@ -17,12 +17,13 @@ const BRAND_INFO = {
 const GenerateBill = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [products, setProducts] = useState([{ product_name: '', meters: '', meter_price: '', price: '', discount: '' }]);
   const [lastGeneratedBill, setLastGeneratedBill] = useState(null);
   const [totalAmount, setTotalAmount] = useState(0);
   const [creditAmount, setCreditAmount] = useState(0);
   const [debitAmount, setDebitAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentMethod, setPaymentMethod] = useState('Pending');
   const [billNumber, setBillNumber] = useState('');
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
@@ -36,13 +37,15 @@ const GenerateBill = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
-  const [paymentMethodForPayment, setPaymentMethodForPayment] = useState('Cash');
+  const [paymentMethodForPayment, setPaymentMethodForPayment] = useState('Pending');
   const [receivedByForPayment, setReceivedByForPayment] = useState('');
   const [transactionIdForPayment, setTransactionIdForPayment] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [customerTotalBills, setCustomerTotalBills] = useState(0);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [transactionId, setTransactionId] = useState('');
   const [receivedBy, setReceivedBy] = useState('');
@@ -294,7 +297,8 @@ const GenerateBill = () => {
       });
 
       console.log('Bill creation response:', response.data);
-      setMessage({ type: 'success', text: 'Bill generated successfully!' });
+      setSuccessMessage('Bill generated successfully!');
+      setShowSuccessModal(true);
       
       // Store last generated bill for PDF/Print
       setLastGeneratedBill({
@@ -327,8 +331,6 @@ const GenerateBill = () => {
       
       // Refresh entries in LedgerEntries page if it's open
       window.dispatchEvent(new Event('billsUpdated'));
-      
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
       console.error('Error generating bill:', error);
       console.error('Error response:', error.response);
@@ -1164,11 +1166,37 @@ const GenerateBill = () => {
             </div>
           </div>
 
-        {message.text && (
+        {message.text && message.type !== 'success' && (
           <div className={`p-4 rounded-lg ${
-            message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
           }`}>
             {message.text}
+          </div>
+        )}
+
+        {/* Success Modal */}
+        {showSuccessModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+              <div className="text-center">
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                  <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Success!</h3>
+                <p className="text-gray-600 mb-6">{successMessage}</p>
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setSuccessMessage('');
+                  }}
+                  className="w-full px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1265,6 +1293,13 @@ const GenerateBill = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Customer <span className="text-red-500">*</span>
                 </label>
+                <input
+                  type="text"
+                  placeholder="Search customer (case-insensitive)..."
+                  value={customerSearchTerm}
+                  onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 mb-2"
+                />
                 <select
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
@@ -1272,14 +1307,36 @@ const GenerateBill = () => {
                   onChange={(e) => {
                     setSelectedCustomer(e.target.value);
                     setCreditAmount(0);
+                    setCustomerSearchTerm(''); // Clear search when customer is selected
                   }}
+                  size={customerSearchTerm ? Math.min(8, customers.filter(c => {
+                    if (!customerSearchTerm) return true;
+                    const searchLower = customerSearchTerm.toLowerCase();
+                    return (
+                      c.name?.toLowerCase().includes(searchLower) ||
+                      c.phone?.toLowerCase().includes(searchLower) ||
+                      c.city?.toLowerCase().includes(searchLower) ||
+                      c.address?.toLowerCase().includes(searchLower)
+                    );
+                  }).length + 1) : 1}
                 >
                   <option value="">Select Customer</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} - {customer.phone}
-                    </option>
-                  ))}
+                  {customers
+                    .filter(customer => {
+                      if (!customerSearchTerm) return true;
+                      const searchLower = customerSearchTerm.toLowerCase();
+                      return (
+                        customer.name?.toLowerCase().includes(searchLower) ||
+                        customer.phone?.toLowerCase().includes(searchLower) ||
+                        customer.city?.toLowerCase().includes(searchLower) ||
+                        customer.address?.toLowerCase().includes(searchLower)
+                      );
+                    })
+                    .map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name} {customer.city ? `(${customer.city})` : ''} - {customer.phone}
+                      </option>
+                    ))}
                 </select>
                 {selectedCustomerData && (
                   <p className="text-xs text-gray-500 mt-1">
@@ -1330,8 +1387,8 @@ const GenerateBill = () => {
                     }
                   }}
                 >
-                  <option value="Cash">Cash</option>
                   <option value="Pending">Pending</option>
+                  <option value="Cash">Cash</option>
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="JazzCash">JazzCash</option>
                   <option value="EasyPaisa">EasyPaisa</option>

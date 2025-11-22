@@ -4096,7 +4096,7 @@ app.get('/api/ledger/customers', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { search } = req.query;
+    const { search, party } = req.query;
 
     let query = supabase
       .from('customers')
@@ -4104,34 +4104,186 @@ app.get('/api/ledger/customers', authenticateToken, async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,address.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,address.ilike.%${search}%,city.ilike.%${search}%,party.ilike.%${search}%`);
+    }
+
+    if (party) {
+      query = query.eq('party', party);
     }
 
     const { data: customers, error } = await query;
 
     if (error) throw error;
 
-    // Calculate balance for each customer
+    // Calculate balance for each customer from billing_entries
     const customersWithBalance = await Promise.all((customers || []).map(async (customer) => {
-      const { data: transactions } = await supabase
-        .from('transactions')
-        .select('debit, credit')
-        .eq('customer_id', customer.id);
+      let balance = 0;
+      let totalDebit = 0;
+      let totalCredit = 0;
+      
+      try {
+        // Try billing_entries first (newer system)
+        const { data: billingEntries, error: billingError } = await supabase
+          .from('billing_entries')
+          .select('debit, credit, entry_type, order_total')
+          .eq('customer_id', customer.id);
 
-      const balance = (transactions || []).reduce((sum, t) => {
-        return sum + parseFloat(t.credit || 0) - parseFloat(t.debit || 0);
-      }, 0);
+        if (billingError) {
+          console.error(`[Customers API] Error fetching billing_entries for customer ${customer.name} (ID: ${customer.id}):`, billingError);
+        }
+
+        if (billingEntries && billingEntries.length > 0) {
+          // Calculate from billing_entries
+          // Balance = credit - debit (following database convention)
+          // Negative balance = customer owes money
+          // Positive balance = customer has credit/overpaid
+          billingEntries.forEach(entry => {
+            // Handle both debit/credit columns and order_total for orders
+            let debit = parseFloat(entry.debit || 0) || 0;
+            let credit = parseFloat(entry.credit || 0) || 0;
+            
+            // If entry_type is 'order' and debit is 0 but order_total exists, use order_total as debit
+            if (entry.entry_type === 'order' && debit === 0 && entry.order_total) {
+              debit = parseFloat(entry.order_total || 0) || 0;
+            }
+            
+            totalDebit += debit;
+            totalCredit += credit;
+            balance += credit - debit;
+          });
+          console.log(`[Customers API] Customer "${customer.name}" (ID: ${customer.id}): ${billingEntries.length} entries | Debit: ${totalDebit}, Credit: ${totalCredit}, Balance: ${balance}`);
+        } else {
+          // Fallback to transactions table (older system)
+          const { data: transactions, error: transError } = await supabase
+            .from('transactions')
+            .select('debit, credit')
+            .eq('customer_id', customer.id);
+
+          if (transError) {
+            console.error(`[Customers API] Error fetching transactions for customer ${customer.name} (ID: ${customer.id}):`, transError);
+          }
+
+          if (transactions && transactions.length > 0) {
+            // Balance = credit - debit (following database convention)
+            transactions.forEach(t => {
+              const debit = parseFloat(t.debit || 0) || 0;
+              const credit = parseFloat(t.credit || 0) || 0;
+              totalDebit += debit;
+              totalCredit += credit;
+              balance += credit - debit;
+            });
+            console.log(`[Customers API] Customer "${customer.name}" (ID: ${customer.id}): ${transactions.length} transactions | Debit: ${totalDebit}, Credit: ${totalCredit}, Balance: ${balance}`);
+          } else {
+            console.log(`[Customers API] Customer "${customer.name}" (ID: ${customer.id}): No billing_entries or transactions found, balance: 0`);
+          }
+        }
+      } catch (error) {
+        console.error(`[Customers API] Error calculating balance for customer ${customer.name} (ID: ${customer.id}):`, error);
+        balance = 0;
+      }
 
       return {
         ...customer,
-        balance
+        balance: balance || 0
       };
     }));
 
+    console.log(`[Customers API] Returning ${customersWithBalance?.length || 0} customers with balances`);
+    // Log summary of balances
+    const customersWithBalanceCount = customersWithBalance?.filter(c => c.balance !== 0).length || 0;
+    console.log(`[Customers API] Customers with non-zero balance: ${customersWithBalanceCount}`);
+    
+    // Log first few customers' balances for debugging
+    if (customersWithBalance && customersWithBalance.length > 0) {
+      console.log(`[Customers API] First 5 customers balances:`, 
+        customersWithBalance.slice(0, 5).map(c => ({ name: c.name, balance: c.balance }))
+      );
+    }
+    
     res.json({ customers: customersWithBalance || [] });
   } catch (error) {
     console.error('Error fetching ledger customers:', error);
     res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
+
+// Debug endpoint to check customer balance details
+app.get('/api/ledger/customers/:id/balance-debug', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { id } = req.params;
+
+    // Get customer
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (customerError || !customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Get billing entries
+    const { data: billingEntries, error: billingError } = await supabase
+      .from('billing_entries')
+      .select('*')
+      .eq('customer_id', id)
+      .order('date', { ascending: true });
+
+    // Get transactions
+    const { data: transactions, error: transError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('customer_id', id)
+      .order('date', { ascending: true });
+
+    let balance = 0;
+    let billingBalance = 0;
+    let transactionBalance = 0;
+
+    if (billingEntries && billingEntries.length > 0) {
+      billingEntries.forEach(entry => {
+        const debit = parseFloat(entry.debit || 0) || 0;
+        const credit = parseFloat(entry.credit || 0) || 0;
+        const orderTotal = parseFloat(entry.order_total || 0) || 0;
+        
+        // Use order_total if debit is 0 and entry_type is order
+        const actualDebit = (entry.entry_type === 'order' && debit === 0 && orderTotal > 0) ? orderTotal : debit;
+        billingBalance += credit - actualDebit;
+      });
+    }
+
+    if (transactions && transactions.length > 0) {
+      transactions.forEach(t => {
+        const debit = parseFloat(t.debit || 0) || 0;
+        const credit = parseFloat(t.credit || 0) || 0;
+        transactionBalance += credit - debit;
+      });
+    }
+
+    balance = billingBalance || transactionBalance;
+
+    res.json({
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone
+      },
+      balance,
+      billingBalance,
+      transactionBalance,
+      billingEntries: billingEntries || [],
+      transactions: transactions || [],
+      billingEntriesCount: billingEntries?.length || 0,
+      transactionsCount: transactions?.length || 0
+    });
+  } catch (error) {
+    console.error('Error in balance debug:', error);
+    res.status(500).json({ error: 'Failed to get balance debug info' });
   }
 });
 
@@ -4142,7 +4294,7 @@ app.post('/api/ledger/customers', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { name, phone, address, city, cnic } = req.body;
+    const { name, phone, address, city, cnic, party } = req.body;
 
     // Validate required fields
     if (!name || !phone) {
@@ -4168,7 +4320,8 @@ app.post('/api/ledger/customers', authenticateToken, async (req, res) => {
         phone: phone.trim(),
         address: address?.trim() || '',
         city: city?.trim() || '',
-        cnic: cnic?.trim() || ''
+        cnic: cnic?.trim() || '',
+        party: party?.trim() || null
       })
       .select()
       .single();
@@ -4199,7 +4352,7 @@ app.put('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, phone, address, city, cnic } = req.body;
+    const { name, phone, address, city, cnic, party } = req.body;
 
     // Check if customer exists
     const { data: existingCustomer, error: findError } = await supabase
@@ -4233,6 +4386,7 @@ app.put('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
     if (address !== undefined) updateData.address = address?.trim() || '';
     if (city !== undefined) updateData.city = city?.trim() || '';
     if (cnic !== undefined) updateData.cnic = cnic?.trim() || '';
+    if (party !== undefined) updateData.party = party?.trim() || null;
 
     const { data: updatedCustomer, error: updateError } = await supabase
       .from('customers')
@@ -4733,10 +4887,11 @@ app.get('/api/ledger/dashboard/stats', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
+    const { party } = req.query;
+    console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries', party ? `for party: ${party}` : 'for all parties');
 
-    // Get all billing entries (bills and payments)
-    const { data: billingEntries, error: entriesError } = await supabase
+    // Build query for billing entries
+    let billingQuery = supabase
       .from('billing_entries')
       .select(`
         *,
@@ -4744,10 +4899,43 @@ console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
           id,
           name,
           phone,
-          address
+          address,
+          party
         )
       `)
       .order('date', { ascending: true });
+
+    // If party filter is provided, filter by customer party
+    if (party) {
+      // First get customer IDs for this party
+      const { data: partyCustomers, error: partyError } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('party', party);
+
+      if (partyError) {
+        console.error('[Ledger Dashboard Stats] Error fetching party customers:', partyError);
+      }
+
+      if (partyCustomers && partyCustomers.length > 0) {
+        const customerIds = partyCustomers.map(c => c.id);
+        billingQuery = billingQuery.in('customer_id', customerIds);
+      } else {
+        // No customers in this party, return empty stats
+        return res.json({
+          stats: {
+            totalDebit: 0,
+            totalCredit: 0,
+            currentBalance: 0,
+            customerCount: 0,
+            transactionCount: 0,
+            topDueCustomers: []
+          }
+        });
+      }
+    }
+
+    const { data: billingEntries, error: entriesError } = await billingQuery;
 
     if (entriesError) {
       console.error('[Ledger Dashboard Stats] Error fetching billing_entries:', entriesError);
@@ -4765,19 +4953,31 @@ console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
 
     console.log(`[Ledger Dashboard Stats] Calculated totals - Debit: ${totalDebit}, Credit: ${totalCredit}, Balance: ${currentBalance}`);
 
-    // Get customer count
-    const { count: customerCount, error: customerCountError } = await supabase
+    // Get customer count (filtered by party if provided)
+    let customerCountQuery = supabase
       .from('customers')
       .select('*', { count: 'exact', head: true });
+    
+    if (party) {
+      customerCountQuery = customerCountQuery.eq('party', party);
+    }
+
+    const { count: customerCount, error: customerCountError } = await customerCountQuery;
 
     if (customerCountError) {
       console.error('[Ledger Dashboard Stats] Error fetching customer count:', customerCountError);
     }
 
-    // Get all customers
-    const { data: allCustomers, error: customersError } = await supabase
+    // Get all customers (filtered by party if provided)
+    let customersQuery = supabase
       .from('customers')
       .select('*');
+    
+    if (party) {
+      customersQuery = customersQuery.eq('party', party);
+    }
+
+    const { data: allCustomers, error: customersError } = await customersQuery;
 
     if (customersError) {
       console.error('[Ledger Dashboard Stats] Error fetching customers:', customersError);
@@ -4787,17 +4987,19 @@ console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
     const customersWithBalance = await Promise.all((allCustomers || []).map(async (customer) => {
       const { data: customerEntries } = await supabase
         .from('billing_entries')
-        .select('entry_type, order_total, credit')
+        .select('debit, credit')
         .eq('customer_id', customer.id);
 
       // Calculate balance from billing_entries
+      // Balance = credit - debit (following database convention)
+      // Negative balance = customer owes money
+      // Positive balance = customer has credit/overpaid
       let balance = 0;
       (customerEntries || []).forEach(entry => {
-        if (entry.entry_type === 'order' && entry.order_total) {
-          balance += parseFloat(entry.order_total || 0); // Debit (bills)
-        } else if (entry.entry_type === 'payment' && entry.credit) {
-          balance -= parseFloat(entry.credit || 0); // Credit (payments)
-        }
+        const debit = parseFloat(entry.debit || 0);
+        const credit = parseFloat(entry.credit || 0);
+        // Use debit and credit directly - they are already set correctly
+        balance += credit - debit;
       });
 
       return {
@@ -4824,13 +5026,72 @@ console.log('[Ledger Dashboard Stats] Fetching stats from billing_entries');
         currentBalance: currentBalance,
         customerCount: customerCount || 0,
         transactionCount: transactionCount,
-        top_due_customers: topDueCustomers || []
+        topDueCustomers: topDueCustomers || []
       }
-
     });
   } catch (error) {
     console.error('Error fetching ledger dashboard stats:', error);
     res.status(500).json({ error: 'Failed to fetch ledger dashboard stats' });
+  }
+});
+
+// Get party-wise statistics
+app.get('/api/ledger/dashboard/party-stats', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Get all customers grouped by party
+    const { data: allCustomers, error: customersError } = await supabase
+      .from('customers')
+      .select('id, name, party');
+
+    if (customersError) {
+      throw customersError;
+    }
+
+    // Group customers by party
+    const partyGroups = {};
+    (allCustomers || []).forEach(customer => {
+      const partyName = customer.party || 'No Party';
+      if (!partyGroups[partyName]) {
+        partyGroups[partyName] = [];
+      }
+      partyGroups[partyName].push(customer.id);
+    });
+
+    // Calculate stats for each party
+    const partyStats = await Promise.all(
+      Object.keys(partyGroups).map(async (partyName) => {
+        const customerIds = partyGroups[partyName];
+        
+        // Get billing entries for this party's customers
+        const { data: billingEntries } = await supabase
+          .from('billing_entries')
+          .select('debit, credit')
+          .in('customer_id', customerIds);
+
+        // Calculate total balance for this party
+        let totalBalance = 0;
+        (billingEntries || []).forEach(entry => {
+          const debit = parseFloat(entry.debit || 0) || 0;
+          const credit = parseFloat(entry.credit || 0) || 0;
+          totalBalance += credit - debit;
+        });
+
+        return {
+          party: partyName,
+          customerCount: customerIds.length,
+          totalBalance: totalBalance
+        };
+      })
+    );
+
+    res.json({ partyStats });
+  } catch (error) {
+    console.error('Error fetching party stats:', error);
+    res.status(500).json({ error: 'Failed to fetch party statistics' });
   }
 });
 
@@ -4841,7 +5102,7 @@ app.get('/api/ledger/dashboard/analytics', authenticateToken, async (req, res) =
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { period = 'week' } = req.query;
+    const { period = 'week', party } = req.query;
 
     // Calculate date range based on period
     const now = new Date();
@@ -4873,16 +5134,43 @@ app.get('/api/ledger/dashboard/analytics', authenticateToken, async (req, res) =
         startDate.setDate(now.getDate() - 7);
     }
 
-console.log(`[Ledger Dashboard Analytics] Fetching billing_entries for period: ${period}`);
+    console.log(`[Ledger Dashboard Analytics] Fetching billing_entries for period: ${period}`, party ? `party: ${party}` : '');
 
-    // Get billing entries in date range
-    const { data: billingEntries, error } = await supabase
+    // Build query for billing entries
+    let billingQuery = supabase
       .from('billing_entries')
-
       .select('*')
       .gte('date', startDate.toISOString().split('T')[0])
       .lte('date', now.toISOString().split('T')[0])
       .order('date', { ascending: true });
+
+    // If party filter is provided, filter by customer party
+    if (party) {
+      const { data: partyCustomers } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('party', party);
+
+      if (partyCustomers && partyCustomers.length > 0) {
+        const customerIds = partyCustomers.map(c => c.id);
+        billingQuery = billingQuery.in('customer_id', customerIds);
+      } else {
+        // No customers in this party
+        return res.json({
+          chartData: [],
+          summary: {
+            totalDebit: 0,
+            totalCredit: 0,
+            netBalance: 0,
+            transactionCount: 0
+          },
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: now.toISOString().split('T')[0]
+        });
+      }
+    }
+
+    const { data: billingEntries, error } = await billingQuery;
 
 if (error) {
       console.error('[Ledger Dashboard Analytics] Error fetching billing_entries:', error);

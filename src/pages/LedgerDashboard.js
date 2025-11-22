@@ -24,6 +24,8 @@ const LedgerDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState('week');
+  const [selectedParty, setSelectedParty] = useState('');
+  const [partyStats, setPartyStats] = useState(null);
 
   const periods = [
     { value: 'day', label: 'Today' },
@@ -37,7 +39,7 @@ const LedgerDashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [selectedPeriod]);
+  }, [selectedPeriod, selectedParty]);
 
   const fetchDashboardData = async () => {
     try {
@@ -45,17 +47,22 @@ const LedgerDashboard = () => {
       const token = localStorage.getItem('token');
 
       // Fetch stats and analytics in parallel
-      const [statsResponse, analyticsResponse] = await Promise.all([
-        axios.get(`${API_URL}/ledger/dashboard/stats`, {
+      const params = selectedParty ? `?party=${selectedParty}` : '';
+      const [statsResponse, analyticsResponse, partyStatsResponse] = await Promise.all([
+        axios.get(`${API_URL}/ledger/dashboard/stats${params}`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        axios.get(`${API_URL}/ledger/dashboard/analytics?period=${selectedPeriod}`, {
+        axios.get(`${API_URL}/ledger/dashboard/analytics?period=${selectedPeriod}${selectedParty ? `&party=${selectedParty}` : ''}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_URL}/ledger/dashboard/party-stats`, {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
 
       setStats(statsResponse.data.stats);
       setAnalytics(analyticsResponse.data);
+      setPartyStats(partyStatsResponse.data.partyStats || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -145,8 +152,8 @@ const LedgerDashboard = () => {
           </Link>
         </div>
 
-        {/* Period Selector */}
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        {/* Period and Party Selector */}
+        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 space-y-4">
           <div className="flex flex-wrap gap-2">
             <span className="text-sm font-semibold text-gray-700 self-center mr-2">Time Period:</span>
             {periods.map((period) => (
@@ -163,7 +170,43 @@ const LedgerDashboard = () => {
               </button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm font-semibold text-gray-700 mr-2">Filter by Party:</span>
+            <select
+              value={selectedParty}
+              onChange={(e) => setSelectedParty(e.target.value)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Parties</option>
+              <option value="Party 1">Party 1</option>
+              <option value="Party 2">Party 2</option>
+              <option value="Party 3">Party 3</option>
+              <option value="Party 4">Party 4</option>
+              <option value="Party 5">Party 5</option>
+            </select>
+          </div>
         </div>
+
+        {/* Party-wise Statistics */}
+        {partyStats && partyStats.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Party-wise Statistics</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {partyStats.map((party) => (
+                <div key={party.party || 'No Party'} className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-4 text-white">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm opacity-90">{party.party || 'No Party'}</p>
+                      <p className="text-xl font-bold mt-1">{party.customerCount || 0} Customers</p>
+                      <p className="text-sm opacity-90 mt-1">Balance: {formatCurrency(party.totalBalance || 0)}</p>
+                    </div>
+                    <div className="text-3xl opacity-80">👥</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

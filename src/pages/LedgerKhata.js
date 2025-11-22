@@ -10,6 +10,7 @@ const LedgerKhata = () => {
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
   const customerIdFromUrl = searchParams.get('customer_id');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   
   const [filters, setFilters] = useState({
     customer_id: customerIdFromUrl || '',
@@ -552,18 +553,46 @@ const LedgerKhata = () => {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Customer</label>
+              <input
+                type="text"
+                placeholder="Search customer (case-insensitive)..."
+                value={customerSearchTerm}
+                onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2"
+              />
               <select
                 name="customer_id"
                 value={filters.customer_id}
                 onChange={handleFilterChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                size={customerSearchTerm ? Math.min(8, customers.filter(c => {
+                  if (!customerSearchTerm) return true;
+                  const searchLower = customerSearchTerm.toLowerCase();
+                  return (
+                    c.name?.toLowerCase().includes(searchLower) ||
+                    c.phone?.toLowerCase().includes(searchLower) ||
+                    c.city?.toLowerCase().includes(searchLower) ||
+                    c.address?.toLowerCase().includes(searchLower)
+                  );
+                }).length + 1) : 1}
               >
                 <option value="">All Customers</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name} ({customer.phone})
-                  </option>
-                ))}
+                {customers
+                  .filter(customer => {
+                    if (!customerSearchTerm) return true;
+                    const searchLower = customerSearchTerm.toLowerCase();
+                    return (
+                      customer.name?.toLowerCase().includes(searchLower) ||
+                      customer.phone?.toLowerCase().includes(searchLower) ||
+                      customer.city?.toLowerCase().includes(searchLower) ||
+                      customer.address?.toLowerCase().includes(searchLower)
+                    );
+                  })
+                  .map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name} {customer.city ? `(${customer.city})` : ''} - {customer.phone}
+                    </option>
+                  ))}
               </select>
             </div>
             <div>
