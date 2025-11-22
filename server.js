@@ -5799,20 +5799,37 @@ app.post('/api/bills', authenticateToken, async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!customer_id || !bill_number || !products || !Array.isArray(products) || products.length === 0) {
-      return res.status(400).json({ error: 'Missing required fields: customer_id, bill_number, and products are required' });
+    if (!customer_id || !products || !Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields: customer_id and products are required' });
     }
 
-    // Check if bill number already exists
-    const { data: existingBill } = await supabase
-      .from('billing_entries')
-      .select('id')
-      .eq('bill_number', bill_number)
-      .not('bill_number', 'is', null)
-      .limit(1);
+    // Auto-generate bill number if not provided
+    let finalBillNumber = bill_number;
+    if (!finalBillNumber || finalBillNumber.trim() === '') {
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const timestamp = Date.now().toString().slice(-6);
+      finalBillNumber = `BILL-${year}${month}${day}-${timestamp}`;
+      console.log('[Create Bill] Auto-generated bill number:', finalBillNumber);
+    }
 
-    if (existingBill && existingBill.length > 0) {
-      return res.status(400).json({ error: `Bill number ${bill_number} already exists` });
+    // Check if bill number already exists (only if provided)
+    if (finalBillNumber) {
+      const { data: existingBill } = await supabase
+        .from('billing_entries')
+        .select('id')
+        .eq('bill_number', finalBillNumber)
+        .not('bill_number', 'is', null)
+        .limit(1);
+
+      if (existingBill && existingBill.length > 0) {
+        // If auto-generated number exists, append random suffix
+        const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        finalBillNumber = `${finalBillNumber}-${randomSuffix}`;
+        console.log('[Create Bill] Bill number conflict, using:', finalBillNumber);
+      }
     }
 
 // Verify customer exists in customers table (required for ledger integration)
@@ -5855,10 +5872,10 @@ const discount = parseFloat(product.discount || 0);
 
       entries.push({
         customer_id: customer_id,
-        bill_number: bill_number,
+        bill_number: finalBillNumber,
         date: billDate,
         product_name: product.product_name || '',
-        description: description || `Bill ${bill_number}`,
+        description: description || `Bill ${finalBillNumber}`,
         entry_type: 'order',
         order_total: orderTotal,
         credit: 0,
@@ -5880,12 +5897,12 @@ const creditAmount = parseFloat(credit || 0);
 
       entries.push({
         customer_id: customer_id,
-        bill_number: bill_number,
+        bill_number: finalBillNumber,
         date: billDate,
-        description: description || `Payment received for bill ${bill_number}`,
+        description: description || `Payment received for bill ${finalBillNumber}`,
         entry_type: 'payment',
         order_total: 0,
-credit: creditAmount,
+        credit: creditAmount,
         debit: 0,
         amount_received: creditAmount, // Amount received is the credit
 
@@ -5910,7 +5927,7 @@ credit: creditAmount,
 
     res.json({
       message: 'Bill created successfully',
-      bill_number: bill_number,
+      bill_number: finalBillNumber,
       entries: insertedEntries
     });
   } catch (error) {
