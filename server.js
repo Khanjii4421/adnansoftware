@@ -4108,7 +4108,13 @@ app.get('/api/ledger/customers', authenticateToken, async (req, res) => {
     }
 
     if (party) {
-      query = query.eq('party', party);
+      if (party === 'No Party') {
+        // Filter for customers with no party (null or empty string)
+        // Use PostgREST filter: party is null OR party equals empty string
+        query = query.or('party.is.null,party.eq.');
+      } else {
+        query = query.eq('party', party);
+      }
     }
 
     const { data: customers, error } = await query;
@@ -5618,13 +5624,13 @@ app.get('/api/ledger/khata/whatsapp', authenticateToken, async (req, res) => {
       }
     };
 
-    // Build WhatsApp message
-    let message = `🧾 *Ledger Khata - ${customer.name || 'Customer'}*\n\n`;
+    // Build WhatsApp message in both Urdu and English
+    let message = `🧾 *Ledger Khata / کھاتہ - ${customer.name || 'Customer'}*\n\n`;
     
     // Add recent entries (last 10)
     const recentEntries = ledgerEntries.slice(-10);
     if (recentEntries.length > 0) {
-      message += `📋 *Recent Entries:*\n`;
+      message += `📋 *Recent Entries / حالیہ اندراجات:*\n`;
       recentEntries.forEach((entry, index) => {
         const date = formatDate(entry.date);
         const billNumber = entry.bill_number || '-';
@@ -5635,30 +5641,32 @@ app.get('/api/ledger/khata/whatsapp', authenticateToken, async (req, res) => {
         
         message += `\n${index + 1}. ${date} - ${billNumber}\n`;
         message += `   ${description}\n`;
-        if (debit > 0) message += `   Debit: Rs. ${debit.toFixed(2)}\n`;
-        if (credit > 0) message += `   Credit: Rs. ${credit.toFixed(2)}\n`;
-        message += `   Balance: Rs. ${balance.toFixed(2)}\n`;
+        if (debit > 0) message += `   Debit / بنام: Rs. ${debit.toFixed(2)}\n`;
+        if (credit > 0) message += `   Credit / جمع: Rs. ${credit.toFixed(2)}\n`;
+        message += `   Balance / بیلنس: Rs. ${balance.toFixed(2)}\n`;
       });
     }
 
-    // Add summary
+    // Add summary in both languages
     message += `\n━━━━━━━━━━━━━━━━━━\n`;
-    message += `💰 *Summary:*\n`;
-    message += `Total Debit: Rs. ${(totals.total_debit || 0).toFixed(2)}\n`;
-    message += `Total Credit: Rs. ${(totals.total_credit || 0).toFixed(2)}\n`;
-    message += `Remaining Balance: Rs. ${(totals.remaining_balance || 0).toFixed(2)}\n`;
+    message += `💰 *Summary / خلاصہ:*\n`;
+    message += `Total Debit / کل بنام: Rs. ${(totals.total_debit || 0).toFixed(2)}\n`;
+    message += `Total Credit / کل جمع: Rs. ${(totals.total_credit || 0).toFixed(2)}\n`;
+    message += `Remaining Balance / باقی بیلنس: Rs. ${(totals.remaining_balance || 0).toFixed(2)}\n`;
     
     if (totals.remaining_balance > 0) {
-      message += `\n⚠️ *Outstanding Balance: Rs. ${(totals.remaining_balance || 0).toFixed(2)}*\n`;
+      message += `\n⚠️ *Outstanding Balance / باقی رقم: Rs. ${(totals.remaining_balance || 0).toFixed(2)}*\n`;
       message += `Please clear your balance at your earliest convenience.\n`;
+      message += `براہ کرم اپنا بیلنس جلد از جلد کلیئر کریں۔\n`;
     } else {
       message += `\n✅ Your account is up to date.\n`;
+      message += `✅ آپ کا اکاؤنٹ اپ ڈیٹ ہے۔\n`;
     }
 
-    message += `\n📞 *Contact:*\n`;
+    message += `\n📞 *Contact / رابطہ:*\n`;
     message += `Adnan Khaddar House\n`;
     message += `Iqbal bazar, Kamalia, Pakistan\n`;
-    message += `Phone: +92 301 7323200\n`;
+    message += `Phone / فون: +92 301 7323200\n`;
 
     // Format phone number for WhatsApp
     const phoneNumber = (customer.phone || '').replace(/\D/g, '');

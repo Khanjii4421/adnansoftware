@@ -352,14 +352,14 @@ const LedgerCustomers = () => {
         
         const customer = customers.find(c => c.id === customerId);
         const remainingBalance = customer ? calculateRemainingBalance(customer.balance) : 0;
-        const balanceMessage = `🧾 *Ledger Statement - ${customer_name || 'Customer'}*\n\n` +
-          `📊 *Account Summary:*\n` +
-          `Remaining Balance: Rs. ${remainingBalance.toFixed(2)}\n\n` +
-          `📞 *Contact:*\n` +
+        const balanceMessage = `🧾 *Ledger Statement / کھاتہ - ${customer_name || 'Customer'}*\n\n` +
+          `📊 *Account Summary / اکاؤنٹ خلاصہ:*\n` +
+          `Remaining Balance / باقی بیلنس: Rs. ${remainingBalance.toFixed(2)}\n\n` +
+          `📞 *Contact / رابطہ:*\n` +
           `Adnan Khaddar House\n` +
           `Iqbal bazar, Kamalia, Pakistan\n` +
-          `Phone: +92 301 7323200\n\n` +
-          (remainingBalance > 0 ? `⚠️ *Please clear your outstanding balance of Rs. ${remainingBalance.toFixed(2)}*\n` : `✅ Your account is up to date.\n`);
+          `Phone / فون: +92 301 7323200\n\n` +
+          (remainingBalance > 0 ? `⚠️ *Outstanding Balance / باقی رقم: Rs. ${remainingBalance.toFixed(2)}*\nPlease clear your balance at your earliest convenience.\nبراہ کرم اپنا بیلنس جلد از جلد کلیئر کریں۔\n` : `✅ Your account is up to date.\n✅ آپ کا اکاؤنٹ اپ ڈیٹ ہے۔\n`);
         
         const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(balanceMessage)}`;
         window.open(whatsappUrl, '_blank');
@@ -383,14 +383,14 @@ const LedgerCustomers = () => {
                                 '92' + cleanPhone;
           
           const remainingBalance = calculateRemainingBalance(customer.balance);
-          const balanceMessage = `🧾 *Ledger Statement - ${customer.name}*\n\n` +
-            `📊 *Account Summary:*\n` +
-            `Remaining Balance: Rs. ${remainingBalance.toFixed(2)}\n\n` +
-            `📞 *Contact:*\n` +
+          const balanceMessage = `🧾 *Ledger Statement / کھاتہ - ${customer.name}*\n\n` +
+            `📊 *Account Summary / اکاؤنٹ خلاصہ:*\n` +
+            `Remaining Balance / باقی بیلنس: Rs. ${remainingBalance.toFixed(2)}\n\n` +
+            `📞 *Contact / رابطہ:*\n` +
             `Adnan Khaddar House\n` +
             `Iqbal bazar, Kamalia, Pakistan\n` +
-            `Phone: +92 301 7323200\n\n` +
-            (remainingBalance > 0 ? `⚠️ *Please clear your outstanding balance of Rs. ${remainingBalance.toFixed(2)}*\n` : `✅ Your account is up to date.\n`);
+            `Phone / فون: +92 301 7323200\n\n` +
+            (remainingBalance > 0 ? `⚠️ *Outstanding Balance / باقی رقم: Rs. ${remainingBalance.toFixed(2)}*\nPlease clear your balance at your earliest convenience.\nبراہ کرم اپنا بیلنس جلد از جلد کلیئر کریں۔\n` : `✅ Your account is up to date.\n✅ آپ کا اکاؤنٹ اپ ڈیٹ ہے۔\n`);
           
           const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(balanceMessage)}`;
           window.open(whatsappUrl, '_blank');
@@ -1044,6 +1044,7 @@ const LedgerCustomers = () => {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Parties</option>
+              <option value="No Party">No Party</option>
               {[...new Set(allCustomers.map(c => c.party).filter(Boolean))].sort().map(party => (
                 <option key={party} value={party}>{party}</option>
               ))}
