@@ -421,16 +421,36 @@ const Orders = () => {
 
   const handleDeleteOrder = async () => {
     if (!deletingOrder) return;
+    
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/orders/${deletingOrder.id}`, {
+      if (!token) {
+        alert('No authentication token found. Please login again.');
+        return;
+      }
+
+      console.log('[Delete Order] Attempting to delete order:', deletingOrder.id);
+      console.log('[Delete Order] API URL:', `${API_URL}/orders/${deletingOrder.id}`);
+
+      const response = await axios.delete(`${API_URL}/orders/${deletingOrder.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      console.log('[Delete Order] Success response:', response.data);
+      
       setDeletingOrder(null);
-      fetchOrders();
+      await fetchOrders();
       alert('Order deleted successfully');
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to delete order');
+      console.error('[Delete Order] Error:', error);
+      console.error('[Delete Order] Error response:', error.response);
+      console.error('[Delete Order] Error message:', error.message);
+      
+      const errorMessage = error.response?.data?.error 
+        || error.message 
+        || 'Failed to delete order. Please check console for details.';
+      
+      alert(errorMessage);
     }
   };
 

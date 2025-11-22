@@ -1232,51 +1232,80 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
 // Delete order
 app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
   try {
+    console.log('[DELETE /api/orders/:id] Delete request received');
+    console.log('[DELETE /api/orders/:id] Order ID:', req.params.id);
+    console.log('[DELETE /api/orders/:id] User:', req.user?.email, 'Role:', req.user?.role);
+
     if (!isSupabaseConfigured) {
+      console.error('[DELETE /api/orders/:id] Database not configured');
       return res.status(500).json({ error: 'Database not configured' });
     }
 
     const { id } = req.params;
 
+    if (!id) {
+      console.error('[DELETE /api/orders/:id] Missing order ID');
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
     // Get the order first to check permissions and get product info for inventory
+    console.log('[DELETE /api/orders/:id] Fetching order from database...');
     const { data: order, error: findError } = await supabase
       .from('orders')
       .select('seller_id, product_codes, qty, status')
       .eq('id', id)
       .single();
 
-    if (findError || !order) {
+    if (findError) {
+      console.error('[DELETE /api/orders/:id] Error finding order:', findError);
+      return res.status(404).json({ error: 'Order not found: ' + findError.message });
+    }
+
+    if (!order) {
+      console.error('[DELETE /api/orders/:id] Order not found in database');
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    console.log('[DELETE /api/orders/:id] Order found:', {
+      id: id,
+      seller_id: order.seller_id,
+      status: order.status
+    });
+
     // Sellers can only delete their own orders
     if (req.user.role === 'seller' && order.seller_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      console.error('[DELETE /api/orders/:id] Access denied - seller trying to delete other seller\'s order');
+      return res.status(403).json({ error: 'Access denied. You can only delete your own orders.' });
     }
 
     // If order was confirmed or delivered, add inventory back before deleting
     const orderStatus = (order.status || '').toLowerCase().trim();
     if (['confirmed', 'delivered'].includes(orderStatus)) {
+      console.log('[DELETE /api/orders/:id] Order was confirmed/delivered, adding inventory back...');
       const productCodesArray = parseProductCodes(order.product_codes || '');
       const orderQty = parseInt(order.qty || 1);
-      await addInventoryBack(order.seller_id, productCodesArray, orderQty);
+      const inventoryResult = await addInventoryBack(order.seller_id, productCodesArray, orderQty);
+      console.log('[DELETE /api/orders/:id] Inventory added back:', inventoryResult);
     }
 
     // Delete the order
+    console.log('[DELETE /api/orders/:id] Deleting order from database...');
     const { error: deleteError } = await supabase
       .from('orders')
       .delete()
       .eq('id', id);
 
     if (deleteError) {
-      console.error('Error deleting order:', deleteError);
+      console.error('[DELETE /api/orders/:id] Error deleting order:', deleteError);
       return res.status(500).json({ error: deleteError.message || 'Failed to delete order' });
     }
 
+    console.log('[DELETE /api/orders/:id] Order deleted successfully');
     res.json({ message: 'Order deleted successfully' });
   } catch (error) {
-    console.error('Error deleting order:', error);
-    res.status(500).json({ error: 'Failed to delete order' });
+    console.error('[DELETE /api/orders/:id] Unexpected error:', error);
+    console.error('[DELETE /api/orders/:id] Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to delete order: ' + (error.message || 'Unknown error') });
   }
 });
 
