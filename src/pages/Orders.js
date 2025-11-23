@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useErrorHandler } from '../components/ErrorHandler';
 import { Html5Qrcode } from 'html5-qrcode';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL, getApiUrl } from '../utils/api';
 
@@ -419,21 +420,21 @@ const Orders = () => {
     }
   };
 
-  const handleDeleteOrder = async () => {
+  const handleDeleteOrder = async (password) => {
     if (!deletingOrder) return;
     
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('No authentication token found. Please login again.');
-        return;
+        throw new Error('No authentication token found. Please login again.');
       }
 
       console.log('[Delete Order] Attempting to delete order:', deletingOrder.id);
       console.log('[Delete Order] API URL:', `${API_URL}/orders/${deletingOrder.id}`);
 
       const response = await axios.delete(`${API_URL}/orders/${deletingOrder.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
 
       console.log('[Delete Order] Success response:', response.data);
@@ -450,7 +451,7 @@ const Orders = () => {
         || error.message 
         || 'Failed to delete order. Please check console for details.';
       
-      alert(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
@@ -471,7 +472,9 @@ const Orders = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/orders/return-scan`, { tracking_id: trackingId }, {
+      // Skip anything after comma (e.g., "TRACK123,1764,2400" -> "TRACK123")
+      const cleanTrackingId = trackingId.trim().split(',')[0].trim();
+      await axios.post(`${API_URL}/orders/return-scan`, { tracking_id: cleanTrackingId }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert('Order marked as return');
@@ -510,7 +513,9 @@ const Orders = () => {
           (decodedText, decodedResult) => {
             // Successfully scanned
             console.log('Scanned:', decodedText);
-            setTrackingId(decodedText.trim());
+            // Skip anything after comma (e.g., "TRACK123,1764,2400" -> "TRACK123")
+            const cleanTrackingId = decodedText.trim().split(',')[0].trim();
+            setTrackingId(cleanTrackingId);
             stopCameraScan();
             setScanError('');
           },
@@ -1733,7 +1738,12 @@ Thank you for your order!`;
                   type="text"
                   placeholder="Enter Tracking ID or scan with camera"
                   value={trackingId}
-                  onChange={(e) => setTrackingId(e.target.value)}
+                  onChange={(e) => {
+                    // Skip anything after comma (e.g., "TRACK123,1764,2400" -> "TRACK123")
+                    const inputValue = e.target.value;
+                    const cleanValue = inputValue.split(',')[0].trim();
+                    setTrackingId(cleanValue);
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500"
                   autoFocus={!isScanning}
                   disabled={isScanning}
@@ -1944,34 +1954,13 @@ Thank you for your order!`;
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
-        {deletingOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Order</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Are you sure you want to delete order <strong>{deletingOrder.seller_reference_number}</strong>?
-                This action cannot be undone.
-              </p>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setDeletingOrder(null)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteOrder}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <PasswordConfirmModal
+          isOpen={!!deletingOrder}
+          onClose={() => setDeletingOrder(null)}
+          onConfirm={handleDeleteOrder}
+          title="Delete Order"
+          message={deletingOrder ? `Are you sure you want to delete order ${deletingOrder.seller_reference_number}? This action cannot be undone.` : ''}
+        />
       </div>
     </Layout>
   );

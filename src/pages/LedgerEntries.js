@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -177,21 +178,28 @@ const LedgerEntries = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this entry?')) return;
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState(null);
+
+  const handleDelete = (id) => {
+    setEntryToDelete(id);
+    setShowPasswordModal(true);
+  };
+
+  const confirmDeleteEntry = async (password) => {
+    if (!entryToDelete) return;
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/ledger/transactions/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      await axios.delete(`${API_URL}/ledger/transactions/${entryToDelete}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
       setMessage({ type: 'success', text: 'Entry deleted successfully!' });
       fetchEntries();
+      setEntryToDelete(null);
     } catch (error) {
-      setMessage({
-        type: 'error',
-        text: error.response?.data?.error || 'Failed to delete entry'
-      });
+      throw new Error(error.response?.data?.error || 'Failed to delete entry');
     }
   };
 
@@ -952,6 +960,16 @@ Thank you!`;
           </div>
         )}
       </div>
+      <PasswordConfirmModal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setEntryToDelete(null);
+        }}
+        onConfirm={confirmDeleteEntry}
+        title="Delete Entry"
+        message="Are you sure you want to delete this entry? This action cannot be undone."
+      />
     </Layout>
   );
 };

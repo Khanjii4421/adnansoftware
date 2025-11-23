@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -353,32 +354,29 @@ const Invoices = () => {
     }
   };
 
-  const handleDeleteInvoice = async (invoiceId, billNumber) => {
-    // Enhanced security confirmation with invoice number
-    const confirmMessage = `⚠️ DELETE INVOICE CONFIRMATION ⚠️\n\nInvoice Number: ${billNumber}\n\nAre you ABSOLUTELY SURE you want to DELETE this invoice?\n\nThis action is PERMANENT and CANNOT be undone!\n\nType "DELETE" in the next prompt to confirm.`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState(null);
 
-    // Second level confirmation - ask user to type DELETE
-    const userInput = prompt('Please type "DELETE" (in capital letters) to confirm deletion:');
-    
-    if (userInput !== 'DELETE') {
-      alert('Deletion cancelled. You must type "DELETE" exactly to confirm.');
-      return;
-    }
+  const handleDeleteInvoice = (invoiceId, billNumber) => {
+    setInvoiceToDelete({ id: invoiceId, billNumber });
+    setShowPasswordModal(true);
+  };
+
+  const confirmDeleteInvoice = async (password) => {
+    if (!invoiceToDelete) return;
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/invoices/${invoiceId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      await axios.delete(`${API_URL}/invoices/${invoiceToDelete.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
       // Success - just refresh
       fetchInvoices();
+      setInvoiceToDelete(null);
     } catch (error) {
       console.error('Error deleting invoice:', error);
-      showError(error.response?.data?.error || 'Failed to delete invoice');
+      throw new Error(error.response?.data?.error || 'Failed to delete invoice');
     }
   };
 
@@ -1370,6 +1368,16 @@ const Invoices = () => {
             </div>
           </div>
         )}
+      <PasswordConfirmModal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setInvoiceToDelete(null);
+        }}
+        onConfirm={confirmDeleteInvoice}
+        title="Delete Invoice"
+        message={invoiceToDelete ? `⚠️ DELETE INVOICE CONFIRMATION ⚠️\n\nInvoice Number: ${invoiceToDelete.billNumber}\n\nAre you ABSOLUTELY SURE you want to DELETE this invoice?\n\nThis action is PERMANENT and CANNOT be undone!` : ''}
+      />
     </Layout>
   );
 };

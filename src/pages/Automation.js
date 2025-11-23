@@ -17,26 +17,8 @@ const Automation = () => {
   const [trackingManualUpdates, setTrackingManualUpdates] = useState([{ seller_reference_number: '', tracking_id: '' }]);
   const [returnScanFile, setReturnScanFile] = useState(null);
   const [returnScanTrackingIds, setReturnScanTrackingIds] = useState('');
-  const [selectedSeller, setSelectedSeller] = useState('');
-  const [sellers, setSellers] = useState([]);
   const [digiPortalSyncing, setDigiPortalSyncing] = useState(false);
   const [digiPortalResults, setDigiPortalResults] = useState(null);
-
-  useEffect(() => {
-    fetchSellers();
-  }, []);
-
-  const fetchSellers = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/sellers`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSellers(response.data.sellers || []);
-    } catch (error) {
-      console.error('Error fetching sellers:', error);
-    }
-  };
 
   if (user?.role !== 'admin') {
     return (
@@ -83,17 +65,11 @@ const Automation = () => {
             return;
           }
 
-          // Send to API with seller filter
-          if (!selectedSeller) {
-            alert('Please select a seller first');
-            setUploading(false);
-            return;
-          }
-
+          // Send to API - process all orders (no seller filter)
           const token = localStorage.getItem('token');
           const response = await axios.post(
             `${API_URL}/orders/bulk-update-status`,
-            { orders, status: 'bulk', seller_id: selectedSeller },
+            { orders, status: 'bulk' },
             {
               headers: { Authorization: `Bearer ${token}` }
             }
@@ -129,16 +105,11 @@ const Automation = () => {
     setUploading(true);
     setResults(null);
 
-    if (!selectedSeller) {
-      alert('Please select a seller first');
-      return;
-    }
-
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_URL}/orders/bulk-update-status`,
-        { orders: validUpdates, seller_id: selectedSeller },
+        { orders: validUpdates },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -217,17 +188,11 @@ const Automation = () => {
   };
 
   const processTrackingUpdates = async (updates) => {
-    if (!selectedSeller) {
-      alert('Please select a seller first');
-      setUploading(false);
-      return;
-    }
-
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_URL}/orders/bulk-update-tracking`,
-        { updates, seller_id: selectedSeller },
+        { updates },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -247,7 +212,10 @@ const Automation = () => {
 
   const handleBulkReturnScan = async (e) => {
     e.preventDefault();
-    const trackingIds = returnScanTrackingIds.split('\n').map(id => id.trim()).filter(id => id);
+    // Skip anything after comma in each tracking ID (e.g., "TRACK123,1764,2400" -> "TRACK123")
+    const trackingIds = returnScanTrackingIds.split('\n')
+      .map(id => id.trim().split(',')[0].trim())
+      .filter(id => id);
     
     if (trackingIds.length === 0 && !returnScanFile) {
       alert('Please enter tracking IDs or upload a file');
@@ -270,9 +238,11 @@ const Automation = () => {
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-            ids = jsonData.map(row => 
-              row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || ''
-            ).filter(id => id);
+            ids = jsonData.map(row => {
+              const id = row['Tracking ID'] || row['tracking_id'] || row['Tracking'] || '';
+              // Skip anything after comma (e.g., "TRACK123,1764,2400" -> "TRACK123")
+              return id ? String(id).trim().split(',')[0].trim() : '';
+            }).filter(id => id);
 
             await processReturnScan(ids);
           } catch (error) {
@@ -293,17 +263,11 @@ const Automation = () => {
   };
 
   const processReturnScan = async (trackingIds) => {
-    if (!selectedSeller) {
-      alert('Please select a seller first');
-      setUploading(false);
-      return;
-    }
-
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_URL}/orders/bulk-return-scan`,
-        { tracking_ids: trackingIds, seller_id: selectedSeller },
+        { tracking_ids: trackingIds },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -329,7 +293,7 @@ const Automation = () => {
       const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_URL}/orders/sync-digi-portal`,
-        selectedSeller ? { seller_id: selectedSeller } : {},
+        {},
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -352,29 +316,17 @@ const Automation = () => {
         <h1 className="text-3xl font-bold text-gray-900">Automation & Bulk Operations</h1>
         <p className="text-gray-600">Manage orders in bulk - status updates, tracking IDs, and return scans</p>
 
-        {/* Seller Selection */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Seller <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={selectedSeller}
-            onChange={(e) => setSelectedSeller(e.target.value)}
-            className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-            required
-          >
-            <option value="">-- Select Seller --</option>
-            {sellers.map((seller) => (
-              <option key={seller.id} value={seller.id}>
-                {seller.name} ({seller.email})
-              </option>
-            ))}
-          </select>
-          {selectedSeller && (
-            <p className="mt-2 text-sm text-green-600">
-              ✓ Orders will be updated only for selected seller
-            </p>
-          )}
+        {/* Info: All Orders */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">ℹ️</span>
+            <div>
+              <p className="font-semibold text-blue-900">Processing All Orders</p>
+              <p className="text-sm text-blue-700 mt-1">
+                All operations will process orders from all sellers automatically. No seller selection needed.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -663,10 +615,7 @@ const Automation = () => {
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4">Manual Sync</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Click the button below to manually sync all orders from Digi Portal. 
-                {selectedSeller && (
-                  <span className="text-green-600 font-medium"> Orders will be synced only for selected seller.</span>
-                )}
+                Click the button below to manually sync all orders from Digi Portal for all sellers.
               </p>
               <button
                 onClick={handleDigiPortalSync}

@@ -438,6 +438,44 @@ const addInventoryBack = async (sellerId, productCodes, qty = 1) => {
 // 4. Use /api/auth/user-password endpoint to get user details with password hash (admin only)
 //
 
+// Password verification middleware for delete operations
+const verifyPasswordForDelete = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required for deletion' });
+    }
+
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Get the current user's password hash from database
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('password')
+      .eq('id', req.user.id)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid password. Deletion cancelled.' });
+    }
+
+    // Password verified, proceed to next middleware
+    next();
+  } catch (error) {
+    console.error('Password verification error:', error);
+    res.status(500).json({ error: 'Password verification failed' });
+  }
+};
+
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -1230,7 +1268,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
 });
 
 // Delete order
-app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
+app.delete('/api/orders/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     console.log('[DELETE /api/orders/:id] Delete request received');
     console.log('[DELETE /api/orders/:id] Order ID:', req.params.id);
@@ -2166,10 +2204,20 @@ app.get('/api/products', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    const { data: products, error } = await supabase
+    let query = supabase
       .from('products')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
+
+    // Sellers can only see their own products
+    if (req.user.role === 'seller') {
+      query = query.eq('seller_id', req.user.id);
+    } else if (req.query.seller_id) {
+      query = query.eq('seller_id', req.query.seller_id);
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data: products, error } = await query;
 
     if (error) throw error;
 
@@ -2177,6 +2225,148 @@ app.get('/api/products', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching products:', error);
     res.status(500).json({ error: 'Failed to fetch products' });
+  }
+});
+
+// Create product
+app.post('/api/products', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { product_code, seller_id, seller_price, shipper_price, meters } = req.body;
+
+    if (!product_code) {
+      return res.status(400).json({ error: 'Product code is required' });
+    }
+
+    // Determine seller_id
+    let finalSellerId = seller_id;
+    if (req.user.role === 'seller') {
+      finalSellerId = req.user.id;
+    } else if (!finalSellerId) {
+      return res.status(400).json({ error: 'Seller ID is required' });
+    }
+
+    // Check if product already exists for this seller
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('product_code', product_code.toUpperCase())
+      .eq('seller_id', finalSellerId)
+      .single();
+
+    if (existing) {
+      return res.status(400).json({ error: 'Product with this code already exists for this seller' });
+    }
+
+    const { data: product, error: insertError } = await supabase
+      .from('products')
+      .insert({
+        product_code: product_code.toUpperCase(),
+        seller_id: finalSellerId,
+        seller_price: parseFloat(seller_price || 0),
+        shipper_price: parseFloat(shipper_price || 0),
+        meters: parseInt(meters || 7)
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    res.json({ product, message: 'Product created successfully' });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).json({ error: error.message || 'Failed to create product' });
+  }
+});
+
+// Update product
+app.put('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { id } = req.params;
+    const { product_code, seller_price, shipper_price, meters } = req.body;
+
+    // Get product first to check permissions
+    const { data: product, error: findError } = await supabase
+      .from('products')
+      .select('seller_id')
+      .eq('id', id)
+      .single();
+
+    if (findError || !product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Sellers can only update their own products
+    if (req.user.role === 'seller' && product.seller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied. You can only edit your own products.' });
+    }
+
+    const updateData = {};
+    if (product_code !== undefined) updateData.product_code = product_code.toUpperCase();
+    if (seller_price !== undefined) updateData.seller_price = parseFloat(seller_price || 0);
+    if (shipper_price !== undefined) updateData.shipper_price = parseFloat(shipper_price || 0);
+    if (meters !== undefined) updateData.meters = parseInt(meters || 7);
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: updatedProduct, error: updateError } = await supabase
+      .from('products')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({ product: updatedProduct, message: 'Product updated successfully' });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({ error: error.message || 'Failed to update product' });
+  }
+});
+
+// Delete product
+app.delete('/api/products/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { id } = req.params;
+
+    // Get product first to check permissions
+    const { data: product, error: findError } = await supabase
+      .from('products')
+      .select('seller_id')
+      .eq('id', id)
+      .single();
+
+    if (findError || !product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Sellers can only delete their own products
+    if (req.user.role === 'seller' && product.seller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied. You can only delete your own products.' });
+    }
+
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) throw deleteError;
+
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete product' });
   }
 });
 
@@ -2416,7 +2606,7 @@ app.post('/api/inventory/out-of-stock', authenticateToken, async (req, res) => {
 });
 
 // Remove product from out of stock list (admin only)
-app.delete('/api/inventory/out-of-stock/:id', authenticateToken, async (req, res) => {
+app.delete('/api/inventory/out-of-stock/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -3710,7 +3900,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
 });
 
 // Delete invoice
-app.delete('/api/invoices/:id', authenticateToken, async (req, res) => {
+app.delete('/api/invoices/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -4417,7 +4607,7 @@ app.put('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // Delete ledger customer
-app.delete('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
+app.delete('/api/ledger/customers/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -5922,7 +6112,7 @@ app.post('/api/ledger/transactions', authenticateToken, async (req, res) => {
 });
 
 // Delete ledger transaction
-app.delete('/api/ledger/transactions/:id', authenticateToken, async (req, res) => {
+app.delete('/api/ledger/transactions/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -7675,7 +7865,7 @@ app.get('/api/bills/:bill_number/pdf', authenticateToken, async (req, res) => {
 });
 
 // Delete a bill
-app.delete('/api/bills/:bill_number', authenticateToken, async (req, res) => {
+app.delete('/api/bills/:bill_number', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     const { bill_number } = req.params;
 
@@ -7718,10 +7908,7 @@ app.post('/api/orders/bulk-update-status', authenticateToken, async (req, res) =
       return res.status(400).json({ error: 'Orders array is required' });
     }
 
-    if (!seller_id) {
-      return res.status(400).json({ error: 'Seller ID is required' });
-    }
-
+    // seller_id is now optional - if not provided, process all orders from all sellers
     const updated = [];
     const errors = [];
 
@@ -7734,29 +7921,36 @@ app.post('/api/orders/bulk-update-status', authenticateToken, async (req, res) =
           continue;
         }
 
-        // Find order by reference number and seller_id
-        const { data: order, error: findError } = await supabase
+        // Find order by reference number (with optional seller_id filter)
+        let query = supabase
           .from('orders')
           .select('id')
-          .eq('seller_reference_number', seller_reference_number)
-          .eq('seller_id', seller_id)
-          .single();
+          .eq('seller_reference_number', seller_reference_number);
+        
+        if (seller_id) {
+          query = query.eq('seller_id', seller_id);
+        }
+        
+        const { data: ordersFound, error: findError } = await query;
 
-        if (findError || !order) {
-          errors.push({ ref: seller_reference_number, error: 'Order not found for this seller' });
+        if (findError || !ordersFound || ordersFound.length === 0) {
+          errors.push({ ref: seller_reference_number, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
           continue;
         }
 
-        // Update order status
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({ status: status.toLowerCase() })
-          .eq('id', order.id);
+        // If multiple orders found (same reference number for different sellers), update all
+        for (const order of ordersFound) {
+          // Update order status
+          const { error: updateError } = await supabase
+            .from('orders')
+            .update({ status: status.toLowerCase() })
+            .eq('id', order.id);
 
-        if (updateError) {
-          errors.push({ ref: seller_reference_number, error: updateError.message });
-        } else {
-          updated.push(seller_reference_number);
+          if (updateError) {
+            errors.push({ ref: seller_reference_number, error: updateError.message });
+          } else {
+            updated.push(seller_reference_number);
+          }
         }
       } catch (error) {
         errors.push({ ref: orderUpdate.seller_reference_number || 'N/A', error: error.message });
@@ -7783,10 +7977,7 @@ app.post('/api/orders/bulk-update-tracking', authenticateToken, async (req, res)
       return res.status(400).json({ error: 'Updates array is required' });
     }
 
-    if (!seller_id) {
-      return res.status(400).json({ error: 'Seller ID is required' });
-    }
-
+    // seller_id is now optional - if not provided, process all orders from all sellers
     const updated = [];
     const errors = [];
 
@@ -7794,7 +7985,7 @@ app.post('/api/orders/bulk-update-tracking', authenticateToken, async (req, res)
       try {
         const { seller_reference_number, tracking_id } = update;
 
-if (!seller_reference_number) {
+        if (!seller_reference_number) {
           errors.push({ ref: 'N/A', error: 'Reference number is required' });
           continue;
         }
@@ -7804,34 +7995,39 @@ if (!seller_reference_number) {
 
         if (!cleanTrackingId) {
           errors.push({ ref: seller_reference_number, error: 'Tracking ID is required' });
-
           continue;
         }
 
-        // Find order by reference number and seller_id
-        const { data: order, error: findError } = await supabase
+        // Find order by reference number (with optional seller_id filter)
+        let query = supabase
           .from('orders')
           .select('id')
-          .eq('seller_reference_number', seller_reference_number)
-          .eq('seller_id', seller_id)
-          .single();
+          .eq('seller_reference_number', seller_reference_number);
+        
+        if (seller_id) {
+          query = query.eq('seller_id', seller_id);
+        }
+        
+        const { data: ordersFound, error: findError } = await query;
 
-        if (findError || !order) {
-          errors.push({ ref: seller_reference_number, error: 'Order not found for this seller' });
+        if (findError || !ordersFound || ordersFound.length === 0) {
+          errors.push({ ref: seller_reference_number, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
           continue;
         }
 
-// Update tracking ID with cleaned value
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({ tracking_id: cleanTrackingId })
+        // If multiple orders found (same reference number for different sellers), update all
+        for (const order of ordersFound) {
+          // Update tracking ID with cleaned value
+          const { error: updateError } = await supabase
+            .from('orders')
+            .update({ tracking_id: cleanTrackingId })
+            .eq('id', order.id);
 
-          .eq('id', order.id);
-
-        if (updateError) {
-          errors.push({ ref: seller_reference_number, error: updateError.message });
-        } else {
-          updated.push(seller_reference_number);
+          if (updateError) {
+            errors.push({ ref: seller_reference_number, error: updateError.message });
+          } else {
+            updated.push(seller_reference_number);
+          }
         }
       } catch (error) {
         errors.push({ ref: update.seller_reference_number || 'N/A', error: error.message });
@@ -7858,61 +8054,63 @@ app.post('/api/orders/bulk-return-scan', authenticateToken, async (req, res) => 
       return res.status(400).json({ error: 'Tracking IDs array is required' });
     }
 
-    if (!seller_id) {
-      return res.status(400).json({ error: 'Seller ID is required' });
-    }
-
+    // seller_id is now optional - if not provided, process all orders from all sellers
     const updated = [];
     const errors = [];
 
     for (const trackingId of tracking_ids) {
       try {
-// Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
+        // Clean tracking_id - convert to string, trim, and remove spaces/dashes/special chars
         const cleanTrackingId = trackingId != null ? String(trackingId).trim().replace(/[\s\-\[\]{}()]/g, '') : '';
         
         if (!cleanTrackingId) {
-
           continue;
         }
 
-        // Find order by tracking_id and seller_id
-        const { data: order, error: findError } = await supabase
+        // Find order by tracking_id (with optional seller_id filter)
+        let query = supabase
           .from('orders')
-          .select('id, seller_reference_number, status, product_codes, qty')
-.eq('tracking_id', cleanTrackingId)
-
-          .eq('seller_id', seller_id)
-          .single();
-
-        if (findError || !order) {
-          errors.push({ tracking_id: trackingId, error: 'Order not found for this seller' });
-          continue;
-        }
-
-        const oldStatus = (order.status || '').toLowerCase().trim();
+          .select('id, seller_reference_number, status, product_codes, qty, seller_id')
+          .eq('tracking_id', cleanTrackingId);
         
-        // Update order status to return
-        const { data: updatedOrder, error: updateError } = await supabase
-          .from('orders')
-          .update({ 
-            status: 'returned',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', order.id)
-          .select()
-          .single();
+        if (seller_id) {
+          query = query.eq('seller_id', seller_id);
+        }
+        
+        const { data: ordersFound, error: findError } = await query;
 
-        if (updateError) {
-          errors.push({ tracking_id: trackingId, error: updateError.message });
-        } else {
-          // Add inventory back if order was previously confirmed/delivered
-          if (['confirmed', 'delivered'].includes(oldStatus)) {
-            const productCodesArray = parseProductCodes(order.product_codes || '');
-            const orderQty = parseInt(order.qty || 1);
-            await addInventoryBack(seller_id, productCodesArray, orderQty);
-          }
+        if (findError || !ordersFound || ordersFound.length === 0) {
+          errors.push({ tracking_id: trackingId, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
+          continue;
+        }
+
+        // Process all matching orders (in case same tracking ID exists for multiple sellers)
+        for (const order of ordersFound) {
+          const oldStatus = (order.status || '').toLowerCase().trim();
           
-          updated.push(order.seller_reference_number || trackingId);
+          // Update order status to return
+          const { data: updatedOrder, error: updateError } = await supabase
+            .from('orders')
+            .update({ 
+              status: 'returned',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', order.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            errors.push({ tracking_id: trackingId, error: updateError.message });
+          } else {
+            // Add inventory back if order was previously confirmed/delivered
+            if (['confirmed', 'delivered'].includes(oldStatus)) {
+              const productCodesArray = parseProductCodes(order.product_codes || '');
+              const orderQty = parseInt(order.qty || 1);
+              await addInventoryBack(order.seller_id, productCodesArray, orderQty);
+            }
+            
+            updated.push(order.seller_reference_number || trackingId);
+          }
         }
       } catch (error) {
         errors.push({ tracking_id: trackingId || 'N/A', error: error.message });
@@ -7923,6 +8121,362 @@ app.post('/api/orders/bulk-return-scan', authenticateToken, async (req, res) => 
   } catch (error) {
     console.error('Error bulk return scan:', error);
     res.status(500).json({ error: 'Failed to process bulk return scan' });
+  }
+});
+
+// ============================================
+// BULK DELETE ORDERS FOR SELLERS
+// ============================================
+
+// Delete all orders for users with role 'seller' (Admin only)
+app.delete('/api/orders/delete-all-seller-orders', authenticateToken, verifyPasswordForDelete, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Only admins can delete all seller orders
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Only admins can delete all seller orders.' });
+    }
+
+    // Get confirmation from request body
+    const { confirm } = req.body;
+    if (confirm !== 'DELETE_ALL_SELLER_ORDERS') {
+      return res.status(400).json({ 
+        error: 'Confirmation required. Send { confirm: "DELETE_ALL_SELLER_ORDERS" } in request body.' 
+      });
+    }
+
+    console.log('[DELETE /api/orders/delete-all-seller-orders] Starting bulk delete of all seller orders...');
+
+    // First, get all seller user IDs
+    const { data: sellers, error: sellersError } = await supabase
+      .from('users')
+      .select('id, email, name')
+      .eq('role', 'seller');
+
+    if (sellersError) {
+      console.error('[DELETE /api/orders/delete-all-seller-orders] Error fetching sellers:', sellersError);
+      return res.status(500).json({ error: 'Failed to fetch sellers: ' + sellersError.message });
+    }
+
+    if (!sellers || sellers.length === 0) {
+      return res.json({ 
+        message: 'No sellers found',
+        deleted_count: 0,
+        sellers_checked: 0
+      });
+    }
+
+    const sellerIds = sellers.map(s => s.id);
+    console.log(`[DELETE /api/orders/delete-all-seller-orders] Found ${sellerIds.length} sellers`);
+
+    // Count orders before deletion
+    const { count: totalOrders, error: countError } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('seller_id', sellerIds);
+
+    if (countError) {
+      console.error('[DELETE /api/orders/delete-all-seller-orders] Error counting orders:', countError);
+      return res.status(500).json({ error: 'Failed to count orders: ' + countError.message });
+    }
+
+    console.log(`[DELETE /api/orders/delete-all-seller-orders] Found ${totalOrders || 0} orders to delete`);
+
+    // Delete all orders for sellers
+    const { data: deletedOrders, error: deleteError } = await supabase
+      .from('orders')
+      .delete()
+      .in('seller_id', sellerIds)
+      .select('id');
+
+    if (deleteError) {
+      console.error('[DELETE /api/orders/delete-all-seller-orders] Error deleting orders:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete orders: ' + deleteError.message });
+    }
+
+    const deletedCount = deletedOrders?.length || 0;
+
+    console.log(`[DELETE /api/orders/delete-all-seller-orders] Successfully deleted ${deletedCount} orders`);
+
+    res.json({
+      message: `Successfully deleted all orders for sellers`,
+      deleted_count: deletedCount,
+      sellers_checked: sellerIds.length,
+      sellers: sellers.map(s => ({ id: s.id, email: s.email, name: s.name }))
+    });
+  } catch (error) {
+    console.error('[DELETE /api/orders/delete-all-seller-orders] Error:', error);
+    res.status(500).json({ error: 'Failed to delete seller orders: ' + error.message });
+  }
+});
+
+// ============================================
+// PORTAL RETURN IDS MANAGEMENT
+// ============================================
+
+// Create portal_returns table if it doesn't exist (Admin only)
+app.post('/api/portal-returns/create-table', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Only admins can create tables
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Only admins can create tables.' });
+    }
+
+    const createTableSQL = `
+CREATE TABLE IF NOT EXISTS portal_returns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portal_return_id TEXT NOT NULL UNIQUE,
+  tracking_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);`;
+
+    // Try to create the table using Supabase RPC or direct SQL
+    // Note: Supabase client doesn't support direct SQL execution
+    // So we'll try to query the table first, and if it fails, provide SQL
+    const { error: testError } = await supabase
+      .from('portal_returns')
+      .select('id')
+      .limit(1);
+
+    if (testError) {
+      if (testError.code === 'PGRST116' || testError.message.includes('does not exist') || 
+          testError.message.includes('relation') || testError.message.includes('table')) {
+        // Table doesn't exist - return SQL for user to run
+        return res.status(200).json({
+          message: 'Table does not exist. Please run the SQL below in your Supabase SQL Editor.',
+          sql: createTableSQL,
+          instructions: [
+            '1. Go to your Supabase Dashboard',
+            '2. Click on "SQL Editor" in the left sidebar',
+            '3. Click "New Query"',
+            '4. Copy and paste the SQL query above',
+            '5. Click "Run" or press Ctrl+Enter',
+            '6. Wait for success message',
+            '7. Refresh this page and try again'
+          ]
+        });
+      }
+    }
+
+    // Table exists
+    res.json({ 
+      message: 'Portal returns table already exists',
+      table_exists: true 
+    });
+  } catch (error) {
+    console.error('Error checking portal returns table:', error);
+    res.status(500).json({ 
+      error: 'Failed to check table status: ' + error.message 
+    });
+  }
+});
+
+// Get all portal returns
+app.get('/api/portal-returns', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Check if portal_returns table exists, if not return empty array
+    const { data: portalReturns, error } = await supabase
+      .from('portal_returns')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      // If table doesn't exist, return empty array instead of error
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') || 
+          error.message.includes('relation') || 
+          error.message.includes('table')) {
+        console.log('[GET /api/portal-returns] Table does not exist, returning empty array');
+        return res.json({ portal_returns: [] });
+      }
+      console.error('[GET /api/portal-returns] Supabase error:', error);
+      // For other errors, still return empty array to prevent frontend crashes
+      return res.json({ portal_returns: [] });
+    }
+
+    res.json({ portal_returns: portalReturns || [] });
+  } catch (error) {
+    console.error('[GET /api/portal-returns] Unexpected error:', error);
+    // Return empty array instead of error to prevent frontend crashes
+    res.json({ portal_returns: [] });
+  }
+});
+
+// Add portal return ID
+app.post('/api/portal-returns', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { portal_return_id, tracking_id } = req.body;
+
+    if (!portal_return_id || !tracking_id) {
+      return res.status(400).json({ error: 'Portal return ID and tracking ID are required' });
+    }
+
+    // Clean tracking_id
+    const cleanTrackingId = String(tracking_id).trim().replace(/[\s\-\[\]{}()]/g, '');
+
+    if (!cleanTrackingId) {
+      return res.status(400).json({ error: 'Valid tracking ID is required' });
+    }
+
+    // Check if portal_returns table exists by trying to query it
+    let tableExists = true;
+    try {
+      const { error: testError } = await supabase
+        .from('portal_returns')
+        .select('id')
+        .limit(1);
+      
+      if (testError) {
+        if (testError.code === 'PGRST116' || testError.message.includes('does not exist') || testError.message.includes('relation') || testError.message.includes('table')) {
+          tableExists = false;
+        } else {
+          throw testError;
+        }
+      }
+    } catch (testError) {
+      if (testError.code === 'PGRST116' || testError.message.includes('does not exist') || testError.message.includes('relation') || testError.message.includes('table')) {
+        tableExists = false;
+      } else {
+        console.error('[Portal Returns] Error checking table:', testError);
+        return res.status(500).json({ 
+          error: 'Error checking portal returns table: ' + testError.message,
+          details: 'Please ensure the portal_returns table exists in your database.'
+        });
+      }
+    }
+
+    if (!tableExists) {
+      const sql = `CREATE TABLE portal_returns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portal_return_id TEXT NOT NULL UNIQUE,
+  tracking_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);`;
+      console.error('[Portal Returns] Table does not exist. SQL to create:');
+      console.error(sql);
+      return res.status(500).json({ 
+        error: 'Portal returns table does not exist. Please create it in your database.',
+        sql: sql,
+        instructions: 'Run the SQL query above in your Supabase SQL Editor to create the table.'
+      });
+    }
+
+    // Check if portal return ID already exists
+    const { data: existing, error: checkError } = await supabase
+      .from('portal_returns')
+      .select('id, portal_return_id')
+      .eq('portal_return_id', portal_return_id.trim())
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('[Portal Returns] Error checking existing record:', checkError);
+      return res.status(500).json({ 
+        error: 'Error checking for existing portal return ID: ' + checkError.message 
+      });
+    }
+
+    if (existing) {
+      return res.status(400).json({ 
+        error: `Portal return ID "${portal_return_id}" already exists` 
+      });
+    }
+
+    // Insert portal return
+    const { data: portalReturn, error: insertError } = await supabase
+      .from('portal_returns')
+      .insert({
+        portal_return_id: portal_return_id.trim(),
+        tracking_id: cleanTrackingId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[Portal Returns] Insert error:', insertError);
+      
+      // Handle specific error cases
+      if (insertError.code === '23505' || insertError.message.includes('unique') || insertError.message.includes('duplicate')) {
+        return res.status(400).json({ 
+          error: `Portal return ID "${portal_return_id}" already exists in the database` 
+        });
+      }
+      
+      if (insertError.code === 'PGRST116' || insertError.message.includes('does not exist') || insertError.message.includes('relation') || insertError.message.includes('table')) {
+        const sql = `CREATE TABLE portal_returns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portal_return_id TEXT NOT NULL UNIQUE,
+  tracking_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);`;
+        return res.status(500).json({ 
+          error: 'Portal returns table does not exist. Please create it in your database.',
+          sql: sql,
+          instructions: 'Run the SQL query above in your Supabase SQL Editor to create the table.'
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: 'Failed to add portal return ID: ' + insertError.message,
+        code: insertError.code || 'UNKNOWN'
+      });
+    }
+
+    console.log('[Portal Returns] Successfully added:', portalReturn);
+    res.json({ portal_return: portalReturn });
+  } catch (error) {
+    console.error('[Portal Returns] Unexpected error adding portal return:', error);
+    res.status(500).json({ 
+      error: 'Failed to add portal return ID: ' + (error.message || 'Unknown error'),
+      details: error.stack
+    });
+  }
+});
+
+// Delete portal return ID
+app.delete('/api/portal-returns/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { id } = req.params;
+
+    const { error: deleteError } = await supabase
+      .from('portal_returns')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      if (deleteError.code === 'PGRST116' || deleteError.message.includes('does not exist')) {
+        return res.status(404).json({ error: 'Portal returns table does not exist' });
+      }
+      throw deleteError;
+    }
+
+    res.json({ message: 'Portal return ID deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting portal return:', error);
+    res.status(500).json({ error: 'Failed to delete portal return ID' });
   }
 });
 
@@ -8661,7 +9215,7 @@ app.put('/api/purchasing/suppliers/:id', authenticateToken, async (req, res) => 
 });
 
 // Delete supplier
-app.delete('/api/purchasing/suppliers/:id', authenticateToken, async (req, res) => {
+app.delete('/api/purchasing/suppliers/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });
@@ -9825,7 +10379,7 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
 });
 
 // Delete expense
-app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
+app.delete('/api/expenses/:id', authenticateToken, verifyPasswordForDelete, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
       return res.status(500).json({ error: 'Database not configured' });

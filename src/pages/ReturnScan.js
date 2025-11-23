@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 
 import { API_URL } from '../utils/api';
 
@@ -106,6 +108,50 @@ const ReturnScan = () => {
     return true;
   });
 
+  const handleDownloadReturns = () => {
+    try {
+      const excelData = filteredReturns.map((order, index) => ({
+        'Sr. No.': index + 1,
+        'Tracking ID': order.tracking_id || '',
+        'Seller Name': order.seller_name || '',
+        'Reference Number': order.seller_reference_number || '',
+        'Customer Name': order.customer_name || '',
+        'Phone Number': order.phone_number_1 || '',
+        'Return Date & Time': formatDate(order.updated_at || order.created_at),
+        'Products': order.product_codes || '',
+        'Status': 'RETURNED'
+      }));
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 8 },   // Sr. No.
+        { wch: 20 },  // Tracking ID
+        { wch: 20 },  // Seller Name
+        { wch: 18 },  // Reference Number
+        { wch: 25 },  // Customer Name
+        { wch: 15 },  // Phone Number
+        { wch: 25 },  // Return Date & Time
+        { wch: 30 },  // Products
+        { wch: 12 }   // Status
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Return Scan Records');
+      
+      // Save file
+      const fileName = `return-scan-records-${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      alert('Return Scan Records downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading returns:', error);
+      alert('Failed to download Return Scan Records');
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6 p-6">
@@ -114,12 +160,20 @@ const ReturnScan = () => {
             <h1 className="text-3xl font-bold text-gray-900">Return Scan Records</h1>
             <p className="text-gray-600 mt-1">View all parcels marked as return through scanning</p>
           </div>
-          <button
-            onClick={fetchScannedReturns}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            🔄 Refresh
-          </button>
+          <div className="flex gap-2">
+            <Link
+              to="/return-match"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              🔗 Return Match Management
+            </Link>
+            <button
+              onClick={fetchScannedReturns}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
 
         {/* Instructions Box */}
@@ -225,6 +279,12 @@ const ReturnScan = () => {
                   <span className="text-sm font-medium text-gray-700">
                     Total Scanned Returns: <span className="font-bold text-indigo-600">{filteredReturns.length}</span>
                   </span>
+                  <button
+                    onClick={handleDownloadReturns}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    📥 Download All Returns
+                  </button>
                 </div>
               </div>
               <div className="overflow-x-auto">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -98,19 +99,29 @@ const Suppliers = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this supplier?')) return;
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState(null);
+
+  const handleDelete = (id) => {
+    setSupplierToDelete(id);
+    setShowPasswordModal(true);
+  };
+
+  const confirmDeleteSupplier = async (password) => {
+    if (!supplierToDelete) return;
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/purchasing/suppliers/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      await axios.delete(`${API_URL}/purchasing/suppliers/${supplierToDelete}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
       setMessage({ type: 'success', text: 'Supplier deleted successfully' });
       fetchSuppliers();
+      setSupplierToDelete(null);
     } catch (error) {
       console.error('Error deleting supplier:', error);
-      setMessage({ type: 'error', text: 'Failed to delete supplier' });
+      throw new Error(error.response?.data?.error || 'Failed to delete supplier');
     }
   };
 
@@ -519,6 +530,16 @@ const Suppliers = () => {
           </div>
         )}
       </div>
+      <PasswordConfirmModal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setSupplierToDelete(null);
+        }}
+        onConfirm={confirmDeleteSupplier}
+        title="Delete Supplier"
+        message="Are you sure you want to delete this supplier? This action cannot be undone."
+      />
     </Layout>
   );
 };

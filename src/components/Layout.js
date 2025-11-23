@@ -245,6 +245,7 @@ const Layout = ({ children }) => {
     { path: '/automation', label: 'Automation', icon: '⚙️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
     { path: '/return-management', label: 'Return Management', icon: '↩️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
     { path: '/return-scan', label: 'Return Scan Records', icon: '🔍', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
+    { path: '/return-match', label: 'Return Match Management', icon: '🔗', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
     { path: '/ledger', label: 'Ledger Khata', icon: '📒', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
     { path: '/out-of-stock', label: 'Out of Stock', icon: '⚠️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },
     { path: '/settings', label: 'Settings', icon: '⚙️', bgColor: 'bg-blue-600', textColor: 'text-white', hoverBg: 'hover:bg-blue-700 hover:text-white' },

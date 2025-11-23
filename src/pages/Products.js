@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -16,6 +17,8 @@ const Products = () => {
   const [uploading, setUploading] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editingProductId, setEditingProductId] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [productToDelete, setProductToDelete] = useState(null);
   const [formData, setFormData] = useState({
     product_code: '',
     seller_id: user?.role === 'seller' ? user.id : '',
@@ -119,6 +122,29 @@ const Products = () => {
       fetchProducts();
     } catch (error) {
       alert(error.response?.data?.error || (isEdit ? 'Failed to update product' : 'Failed to create product'));
+    }
+  };
+
+  const handleDeleteProduct = (productId) => {
+    setProductToDelete(productId);
+    setShowPasswordModal(true);
+  };
+
+  const confirmDeleteProduct = async (password) => {
+    if (!productToDelete) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/products/${productToDelete}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
+      });
+      alert('Product deleted successfully!');
+      fetchProducts();
+      setProductToDelete(null);
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      throw new Error(error.response?.data?.error || 'Failed to delete product');
     }
   };
 
@@ -336,15 +362,23 @@ const Products = () => {
                     <button
                       onClick={() => openEditModal(product)}
                       className="text-indigo-600 hover:text-indigo-900"
+                      title="Edit product"
                     >
-                      Edit
+                      ✏️ Edit
                     </button>
                     <button
                       onClick={() => handleDuplicate(product)}
                       className="text-green-600 hover:text-green-800"
                       title="Duplicate product"
                     >
-                      Duplicate
+                      📋 Duplicate
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProduct(product.id)}
+                      className="text-red-600 hover:text-red-900"
+                      title="Delete product"
+                    >
+                      🗑️ Delete
                     </button>
                   </td>
                 </tr>
@@ -545,6 +579,16 @@ const Products = () => {
           </div>
         )}
       </div>
+      <PasswordConfirmModal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setProductToDelete(null);
+        }}
+        onConfirm={confirmDeleteProduct}
+        title="Delete Product"
+        message="Are you sure you want to delete this product? This action cannot be undone."
+      />
     </Layout>
   );
 };

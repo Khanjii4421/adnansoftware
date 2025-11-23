@@ -26,7 +26,8 @@ const PrivateRoute = ({ children }) => {
     if (currentPath.startsWith('/admin') || currentPath === '/sellers' || currentPath === '/products' || 
         currentPath === '/inventory' || 
         currentPath === '/automation' || currentPath === '/return-management' ||
-        currentPath === '/generate-bill' || currentPath === '/purchasing' || 
+        currentPath === '/return-match' || currentPath === '/generate-bill' || 
+        currentPath === '/purchasing' || 
         currentPath.startsWith('/purchasing') || currentPath === '/ledger' ||
         currentPath.startsWith('/ledger') || currentPath === '/invoice-match' ||
         currentPath === '/expenses-tracker') {

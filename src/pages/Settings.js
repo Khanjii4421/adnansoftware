@@ -17,6 +17,9 @@ const Settings = () => {
   const [selectedSeller, setSelectedSeller] = useState('');
   const [sellers, setSellers] = useState([]);
   const [importStatus, setImportStatus] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteResult, setDeleteResult] = useState(null);
 
   useEffect(() => {
     checkDatabase();
@@ -446,6 +449,92 @@ const Settings = () => {
                   className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
                 >
                   {importing ? 'Importing...' : 'Import Orders'}
+                </button>
+              </div>
+            </div>
+
+            {/* Delete All Seller Orders - Dangerous Operation */}
+            <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-800 rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-red-800 dark:text-red-200 mb-4 flex items-center gap-2">
+                <span>⚠️</span> Delete All Seller Orders
+              </h2>
+              <p className="text-red-700 dark:text-red-300 mb-4 font-semibold">
+                ⚠️ DANGEROUS OPERATION: This will permanently delete ALL orders for ALL users with role 'seller'.
+              </p>
+              <p className="text-red-600 dark:text-red-400 mb-4 text-sm">
+                This action cannot be undone. Make sure you have backed up your data before proceeding.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                    Type <strong>DELETE_ALL_SELLER_ORDERS</strong> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                    placeholder="Type DELETE_ALL_SELLER_ORDERS"
+                    disabled={deleting}
+                    className="w-full px-4 py-2 border-2 border-red-300 dark:border-red-700 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-gray-100"
+                  />
+                </div>
+
+                {deleteResult && (
+                  <div className={`p-4 rounded-lg ${
+                    deleteResult.success ? 'bg-green-50 border border-green-300 text-green-800' :
+                    'bg-red-50 border border-red-300 text-red-800'
+                  }`}>
+                    <p className="text-sm font-medium">{deleteResult.message}</p>
+                    {deleteResult.deleted_count !== undefined && (
+                      <p className="text-sm mt-2">
+                        Deleted: <strong>{deleteResult.deleted_count}</strong> orders from <strong>{deleteResult.sellers_checked}</strong> sellers
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={async () => {
+                    if (deleteConfirm !== 'DELETE_ALL_SELLER_ORDERS') {
+                      alert('Please type DELETE_ALL_SELLER_ORDERS to confirm');
+                      return;
+                    }
+
+                    if (!window.confirm('⚠️ FINAL WARNING: This will delete ALL orders for ALL sellers. This cannot be undone!\n\nAre you absolutely sure?')) {
+                      return;
+                    }
+
+                    try {
+                      setDeleting(true);
+                      setDeleteResult(null);
+                      const token = localStorage.getItem('token');
+                      const apiUrl = getApiUrl();
+                      const response = await axios.delete(`${apiUrl}/orders/delete-all-seller-orders`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        data: { confirm: 'DELETE_ALL_SELLER_ORDERS' }
+                      });
+
+                      setDeleteResult({
+                        success: true,
+                        message: '✅ Successfully deleted all seller orders',
+                        deleted_count: response.data.deleted_count,
+                        sellers_checked: response.data.sellers_checked
+                      });
+                      setDeleteConfirm('');
+                    } catch (error) {
+                      setDeleteResult({
+                        success: false,
+                        message: '❌ Error: ' + (error.response?.data?.error || error.message)
+                      });
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleteConfirm !== 'DELETE_ALL_SELLER_ORDERS' || deleting}
+                  className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                >
+                  {deleting ? 'Deleting...' : '🗑️ Delete All Seller Orders'}
                 </button>
               </div>
             </div>

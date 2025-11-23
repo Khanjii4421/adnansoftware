@@ -13,6 +13,7 @@ import Sellers from './pages/Sellers';
 import Automation from './pages/Automation';
 import ReturnManagement from './pages/ReturnManagement';
 import ReturnScan from './pages/ReturnScan';
+import ReturnMatchManagement from './pages/ReturnMatchManagement';
 import LedgerDashboard from './pages/LedgerDashboard';
 import LedgerCustomers from './pages/LedgerCustomers';
 import LedgerEntries from './pages/LedgerEntries';
@@ -115,6 +116,14 @@ function App() {
             element={
               <PrivateRoute>
                 <ReturnScan />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/return-match"
+            element={
+              <PrivateRoute>
+                <ReturnMatchManagement />
               </PrivateRoute>
             }
           />

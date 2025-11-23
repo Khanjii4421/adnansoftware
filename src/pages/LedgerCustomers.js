@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -305,18 +306,28 @@ const LedgerCustomers = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this customer?')) return;
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+
+  const handleDelete = (id) => {
+    setCustomerToDelete(id);
+    setShowPasswordModal(true);
+  };
+
+  const confirmDeleteCustomer = async (password) => {
+    if (!customerToDelete) return;
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/ledger/customers/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      await axios.delete(`${API_URL}/ledger/customers/${customerToDelete}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
       setMessage({ type: 'success', text: 'Customer deleted successfully!' });
       fetchCustomers();
+      setCustomerToDelete(null);
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.error || 'Failed to delete customer' });
+      throw new Error(error.response?.data?.error || 'Failed to delete customer');
     }
   };
 
@@ -1188,6 +1199,16 @@ const LedgerCustomers = () => {
           </div>
         )}
       </div>
+      <PasswordConfirmModal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setCustomerToDelete(null);
+        }}
+        onConfirm={confirmDeleteCustomer}
+        title="Delete Customer"
+        message="Are you sure you want to delete this customer? This action cannot be undone."
+      />
     </Layout>
   );
 };
