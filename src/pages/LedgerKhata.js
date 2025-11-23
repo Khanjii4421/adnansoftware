@@ -263,7 +263,7 @@ const LedgerKhata = () => {
     const customerForPayment = entry?.customer || (filters.customer_id ? customers.find(c => c.id === filters.customer_id) : null);
     setSelectedCustomerForPayment(customerForPayment);
     
-    // Set payment amount based on remaining balance
+    // Set payment amount based on remaining balance (allow even if negative)
     const totalRemaining = totals.remaining_balance || 0;
     setPaymentAmount(totalRemaining > 0 ? totalRemaining.toString() : '');
     
@@ -295,17 +295,22 @@ const LedgerKhata = () => {
     const amount = parseFloat(paymentAmount);
     const totalRemaining = totals.remaining_balance || 0;
     
-    // For general payment, check against total remaining balance
-    if (!selectedBill && amount > totalRemaining) {
-      setMessage({ type: 'error', text: `Payment amount cannot exceed total remaining balance of ${formatCurrency(totalRemaining)}` });
-      return;
+    // Only restrict payment amount if balance is positive (customer owes money)
+    // If balance is negative (customer has credit), allow any payment amount
+    if (totalRemaining > 0) {
+      // For general payment, check against total remaining balance
+      if (!selectedBill && amount > totalRemaining) {
+        setMessage({ type: 'error', text: `Payment amount cannot exceed total remaining balance of ${formatCurrency(totalRemaining)}` });
+        return;
+      }
+      
+      // Check against total remaining balance
+      if (amount > totalRemaining) {
+        setMessage({ type: 'error', text: `Payment amount cannot exceed remaining balance of ${formatCurrency(totalRemaining)}` });
+        return;
+      }
     }
-    
-    // Check against total remaining balance
-    if (amount > totalRemaining) {
-      setMessage({ type: 'error', text: `Payment amount cannot exceed remaining balance of ${formatCurrency(totalRemaining)}` });
-      return;
-    }
+    // If balance is negative or zero, allow any payment amount
 
     setAddingPayment(true);
     try {
@@ -542,9 +547,12 @@ const LedgerKhata = () => {
               {loadingWhatsApp ? 'Preparing...' : '💬 Send WhatsApp'}
             </button>
           </div>
-          {filters.customer_id && totals.remaining_balance > 0 && (
+          {filters.customer_id && (
             <p className="text-sm text-gray-600 mt-2">
-              Total Remaining Balance: <span className="font-bold text-orange-600">{formatCurrency(totals.remaining_balance)}</span> - Add payment to reduce balance
+              Total Remaining Balance: <span className={`font-bold ${totals.remaining_balance >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                {formatCurrency(totals.remaining_balance)}
+              </span>
+              {totals.remaining_balance > 0 ? ' - Add payment to reduce balance' : ' - Customer has credit, can add payment'}
             </p>
           )}
         </div>
@@ -878,7 +886,7 @@ const LedgerKhata = () => {
                       placeholder="Enter payment amount"
                       required
                       min="0"
-                      max={totals.remaining_balance}
+                      max={totals.remaining_balance > 0 ? totals.remaining_balance : undefined}
                       step="0.01"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />

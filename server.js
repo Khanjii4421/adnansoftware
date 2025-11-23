@@ -3060,7 +3060,7 @@ app.get('/api/orders/kpis', authenticateToken, async (req, res) => {
   }
 });
 
-// Get invoices
+// Get invoices with seller information
 app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     if (!isSupabaseConfigured) {
@@ -3081,7 +3081,33 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ invoices: invoices || [] });
+    // Fetch seller information for each invoice
+    const invoicesWithSellers = [];
+    for (const invoice of invoices || []) {
+      let sellerName = 'Unknown';
+      let sellerEmail = '';
+      
+      if (invoice.seller_id) {
+        const { data: seller, error: sellerError } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('id', invoice.seller_id)
+          .single();
+        
+        if (!sellerError && seller) {
+          sellerName = seller.name || 'Unknown';
+          sellerEmail = seller.email || '';
+        }
+      }
+      
+      invoicesWithSellers.push({
+        ...invoice,
+        seller_name: sellerName,
+        seller_email: sellerEmail
+      });
+    }
+
+    res.json({ invoices: invoicesWithSellers });
   } catch (error) {
     console.error('Error fetching invoices:', error);
     res.status(500).json({ error: 'Failed to fetch invoices' });
@@ -3370,14 +3396,35 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (invoiceError) throw invoiceError;
+    if (invoiceError) {
+      console.error('[GET /api/invoices/:id] Invoice fetch error:', invoiceError);
+      return res.status(404).json({ error: 'Invoice not found', details: invoiceError.message });
+    }
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
 
     // Get seller info
-    const { data: seller } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .eq('id', invoice.seller_id)
-      .single();
+    let seller = null;
+    if (invoice.seller_id) {
+      const { data: sellerData, error: sellerError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', invoice.seller_id)
+        .single();
+      
+      if (sellerError) {
+        console.warn('[GET /api/invoices/:id] Seller fetch error (non-fatal):', sellerError);
+        // Don't throw, just use null seller
+      } else {
+        seller = sellerData;
+      }
+    }
+
+    // If seller not found, use default values
+    const sellerName = seller?.name || 'Unknown';
+    const sellerEmail = seller?.email || '';
 
     // Check if it's Affan seller
     const isAffanSeller = seller && (
@@ -3394,63 +3441,99 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
       return -1000;                            // 20+ products
     };
 
+    // Helper function to parse product codes
+    const parseProductCodes = (productCodes) => {
+      if (!productCodes) return [];
+      return productCodes
+        .split(',')
+        .map(code => code.trim().toUpperCase())
+        .filter(code => code.length > 0);
+    };
+
     // Get orders for this invoice using invoice_orders junction table
-    const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
-      .from('invoice_orders')
-      .select('order_id')
-      .eq('invoice_id', id);
-
-    if (invoiceOrdersError) throw invoiceOrdersError;
-
-    const orderIds = (invoiceOrders || []).map(io => io.order_id);
-
     let orders = [];
-    if (orderIds.length > 0) {
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .in('id', orderIds)
-        .order('created_at', { ascending: false });
+    try {
+      const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
+        .from('invoice_orders')
+        .select('order_id')
+        .eq('invoice_id', id);
 
-      if (ordersError) throw ordersError;
-      
-      // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
-      // Delivered orders keep original DC and profit
-      if (isAffanSeller && ordersData) {
-        orders = ordersData.map(order => {
-          const statusLower = String(order.status || '').toLowerCase().trim();
-          const isReturned = statusLower === 'returned' || statusLower === 'return';
-          
-          // Only recalculate DC for returned orders
-          if (isReturned) {
-            const productCodesArray = parseProductCodes(order.product_codes || '');
-            const productCount = productCodesArray.length;
-            const calculatedDC = calculateAffanDC(productCount);
-            
-            return {
-              ...order,
-              delivery_charge: calculatedDC // Update DC to calculated value for returns only
-            };
-          } else {
-            // Delivered orders: keep original DC and profit
-            return order;
-          }
-        });
+      if (invoiceOrdersError) {
+        console.error('[GET /api/invoices/:id] Error fetching invoice orders:', invoiceOrdersError);
+        // Don't throw, just use empty orders array
+        orders = [];
       } else {
-        orders = ordersData || [];
+        const orderIds = (invoiceOrders || []).map(io => io.order_id);
+
+        if (orderIds.length > 0) {
+          const { data: ordersData, error: ordersError } = await supabase
+            .from('orders')
+            .select('*')
+            .in('id', orderIds)
+            .order('created_at', { ascending: false });
+
+          if (ordersError) {
+            console.error('[GET /api/invoices/:id] Error fetching orders:', ordersError);
+            // Don't throw, just use empty orders array
+            orders = [];
+          } else {
+            orders = ordersData || [];
+            
+            // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
+            // Delivered orders keep original DC and profit
+            if (isAffanSeller && orders && orders.length > 0) {
+              orders = orders.map(order => {
+                try {
+                  const statusLower = String(order.status || '').toLowerCase().trim();
+                  const isReturned = statusLower === 'returned' || statusLower === 'return';
+                  
+                  // Only recalculate DC for returned orders
+                  if (isReturned) {
+                    const productCodesArray = parseProductCodes(order.product_codes || '');
+                    const productCount = productCodesArray.length;
+                    const calculatedDC = calculateAffanDC(productCount);
+                    
+                    return {
+                      ...order,
+                      delivery_charge: calculatedDC // Update DC to calculated value for returns only
+                    };
+                  } else {
+                    // Delivered orders: keep original DC and profit
+                    return order;
+                  }
+                } catch (orderError) {
+                  console.error('[GET /api/invoices/:id] Error processing order:', orderError, order);
+                  return order; // Return order as-is if processing fails
+                }
+              });
+            }
+          }
+        }
       }
+    } catch (ordersFetchError) {
+      console.error('[GET /api/invoices/:id] Error in orders fetch process:', ordersFetchError);
+      orders = []; // Use empty array as fallback
     }
 
     res.json({
       invoice: {
         ...invoice,
-        seller_name: seller?.name || 'Unknown'
+        seller_name: sellerName
       },
       orders: orders || []
     });
   } catch (error) {
-    console.error('Error fetching invoice details:', error);
-    res.status(500).json({ error: 'Failed to fetch invoice details' });
+    console.error('[GET /api/invoices/:id] Error fetching invoice details:', error);
+    console.error('[GET /api/invoices/:id] Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+    res.status(500).json({ 
+      error: 'Failed to fetch invoice details',
+      details: error.message || 'Unknown error'
+    });
   }
 });
 
@@ -3578,16 +3661,35 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (invoiceError || !invoice) {
+    if (invoiceError) {
+      console.error('[GET /api/invoices/:id/pdf] Invoice fetch error:', invoiceError);
+      return res.status(404).json({ error: 'Invoice not found', details: invoiceError.message });
+    }
+
+    if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
     // Get seller info
-    const { data: seller } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .eq('id', invoice.seller_id)
-      .single();
+    let seller = null;
+    if (invoice.seller_id) {
+      const { data: sellerData, error: sellerError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', invoice.seller_id)
+        .single();
+      
+      if (sellerError) {
+        console.warn('[GET /api/invoices/:id/pdf] Seller fetch error (non-fatal):', sellerError);
+        // Don't throw, just use null seller
+      } else {
+        seller = sellerData;
+      }
+    }
+
+    // If seller not found, use default values (don't throw error, just use defaults)
+    const sellerName = seller?.name || 'Unknown';
+    const sellerEmail = seller?.email || '';
 
     // Check if it's Affan seller
     const isAffanSeller = seller && (
@@ -3614,61 +3716,362 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     };
 
     // Get orders for this invoice using invoice_orders junction table
-    const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
-      .from('invoice_orders')
-      .select('order_id')
-      .eq('invoice_id', id);
-
-    if (invoiceOrdersError) throw invoiceOrdersError;
-
-    const orderIds = (invoiceOrders || []).map(io => io.order_id);
-
     let orders = [];
-    if (orderIds.length > 0) {
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .in('id', orderIds)
-        .order('created_at', { ascending: false });
+    try {
+      console.log('[GET /api/invoices/:id/pdf] Fetching orders for invoice:', id);
+      const { data: invoiceOrders, error: invoiceOrdersError } = await supabase
+        .from('invoice_orders')
+        .select('order_id')
+        .eq('invoice_id', id);
 
-      if (ordersError) throw ordersError;
-      
-      // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
-      // Delivered orders keep original DC and profit
-      if (isAffanSeller && ordersData) {
-        orders = ordersData.map(order => {
-          const statusLower = String(order.status || '').toLowerCase().trim();
-          const isReturned = statusLower === 'returned' || statusLower === 'return';
-          
-          // Only recalculate DC for returned orders
-          if (isReturned) {
-            const productCodesArray = parseProductCodes(order.product_codes || '');
-            const productCount = productCodesArray.length;
-            const calculatedDC = calculateAffanDC(productCount);
-            
-            return {
-              ...order,
-              delivery_charge: calculatedDC // Update DC to calculated value for returns only
-            };
-          } else {
-            // Delivered orders: keep original DC and profit
-            return order;
-          }
-        });
+      if (invoiceOrdersError) {
+        console.error('[GET /api/invoices/:id/pdf] Error fetching invoice orders:', invoiceOrdersError);
+        // Don't throw, just use empty orders array
+        orders = [];
       } else {
-        orders = ordersData || [];
+        console.log('[GET /api/invoices/:id/pdf] Found invoice_orders:', invoiceOrders?.length || 0);
+        const orderIds = (invoiceOrders || []).map(io => io.order_id).filter(Boolean);
+
+        if (orderIds.length > 0) {
+          console.log('[GET /api/invoices/:id/pdf] Fetching orders with IDs:', orderIds.length);
+          const { data: ordersData, error: ordersError } = await supabase
+            .from('orders')
+            .select('*')
+            .in('id', orderIds)
+            .order('created_at', { ascending: false });
+
+          if (ordersError) {
+            console.error('[GET /api/invoices/:id/pdf] Error fetching orders:', ordersError);
+            // Don't throw, just use empty orders array
+            orders = [];
+          } else {
+            console.log('[GET /api/invoices/:id/pdf] Fetched orders:', ordersData?.length || 0);
+            orders = ordersData || [];
+            
+            // For Affan seller: Recalculate DC based on product count (ONLY for returned orders)
+            // Delivered orders keep original DC and profit
+            if (isAffanSeller && orders && orders.length > 0) {
+              orders = orders.map(order => {
+                try {
+                  const statusLower = String(order.status || '').toLowerCase().trim();
+                  const isReturned = statusLower === 'returned' || statusLower === 'return';
+                  
+                  // Only recalculate DC for returned orders
+                  if (isReturned) {
+                    const productCodesArray = parseProductCodes(order.product_codes || '');
+                    const productCount = productCodesArray.length;
+                    const calculatedDC = calculateAffanDC(productCount);
+                    
+                    return {
+                      ...order,
+                      delivery_charge: calculatedDC // Update DC to calculated value for returns only
+                    };
+                  } else {
+                    // Delivered orders: keep original DC and profit
+                    return order;
+                  }
+                } catch (orderError) {
+                  console.error('[GET /api/invoices/:id/pdf] Error processing order:', orderError, order);
+                  return order; // Return order as-is if processing fails
+                }
+              });
+            }
+          }
+        } else {
+          console.warn('[GET /api/invoices/:id/pdf] No order IDs found in invoice_orders, trying fallback method');
+          
+          // FALLBACK: If invoice_orders is empty, try to fetch orders directly
+          // This handles cases where invoice_orders table wasn't populated correctly
+          // Match orders based on: seller_id, status (delivered/returned), and is_paid status matching invoice
+          try {
+            console.log('[GET /api/invoices/:id/pdf] Fallback: Fetching orders for seller:', invoice.seller_id);
+            
+            // Match is_paid status with invoice
+            const matchIsPaid = invoice.is_paid || false;
+            
+            // Fetch orders that match the invoice criteria
+            const { data: fallbackOrders, error: fallbackError } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('seller_id', invoice.seller_id)
+              .eq('is_paid', matchIsPaid)
+              .in('status', ['delivered', 'returned', 'return'])
+              .order('created_at', { ascending: false })
+              .limit(2000); // Increased limit to get more orders
+            
+            if (!fallbackError && fallbackOrders && fallbackOrders.length > 0) {
+              console.log('[GET /api/invoices/:id/pdf] Fallback: Found', fallbackOrders.length, 'orders matching seller and payment status');
+              
+              // Filter orders that match invoice date range (within 90 days before invoice date)
+              // Increased range to catch more orders
+              const invoiceDate = new Date(invoice.invoice_date || invoice.created_at);
+              const dateRangeStart = new Date(invoiceDate);
+              dateRangeStart.setDate(dateRangeStart.getDate() - 90); // 90 days before invoice
+              const dateRangeEnd = new Date(invoiceDate);
+              dateRangeEnd.setDate(dateRangeEnd.getDate() + 1); // 1 day after invoice
+              
+              let filteredOrders = fallbackOrders.filter(order => {
+                const orderDate = new Date(order.created_at || order.updated_at);
+                return orderDate >= dateRangeStart && orderDate <= dateRangeEnd;
+              });
+              
+              console.log('[GET /api/invoices/:id/pdf] Fallback: Filtered to', filteredOrders.length, 'orders within date range');
+              
+              // If invoice shows total_orders but we have fewer, try without date filter
+              if (filteredOrders.length < (invoice.total_orders || 0) && fallbackOrders.length >= (invoice.total_orders || 0)) {
+                console.log('[GET /api/invoices/:id/pdf] Fallback: Date filter too restrictive, using all matching orders');
+                filteredOrders = fallbackOrders;
+              }
+              
+              // Count delivered vs returned to match invoice summary
+              const deliveredInFiltered = filteredOrders.filter(o => {
+                const s = String(o.status || '').toLowerCase().trim();
+                return s === 'delivered';
+              }).length;
+              const returnedInFiltered = filteredOrders.filter(o => {
+                const s = String(o.status || '').toLowerCase().trim();
+                return s === 'returned' || s === 'return';
+              }).length;
+              
+              console.log('[GET /api/invoices/:id/pdf] Fallback: Delivered:', deliveredInFiltered, 'Returned:', returnedInFiltered);
+              console.log('[GET /api/invoices/:id/pdf] Fallback: Invoice shows - Delivered:', invoice.delivered_orders, 'Returned:', invoice.return_orders);
+              
+              // More lenient matching: if we have orders and invoice shows orders, use them
+              // Priority: exact match > close match > any reasonable match
+              const deliveredDiff = Math.abs(deliveredInFiltered - (invoice.delivered_orders || 0));
+              const returnedDiff = Math.abs(returnedInFiltered - (invoice.return_orders || 0));
+              const totalDiff = Math.abs(filteredOrders.length - (invoice.total_orders || 0));
+              
+              // Use orders if:
+              // 1. Exact match or very close (within 20% or 10 orders)
+              // 2. Or we have at least 50% of expected orders
+              // 3. Or invoice shows orders but invoice_orders table is empty (use what we have)
+              const shouldUseOrders = filteredOrders.length > 0 && (
+                (totalDiff <= Math.max(10, (invoice.total_orders || 0) * 0.2)) ||
+                (filteredOrders.length >= Math.max(1, (invoice.total_orders || 0) * 0.5)) ||
+                ((invoice.total_orders || 0) > 0 && filteredOrders.length > 0)
+              );
+              
+              if (shouldUseOrders) {
+                // Use filtered orders, prioritize matching invoice total_orders
+                let finalOrders = filteredOrders;
+                if (invoice.total_orders && filteredOrders.length > invoice.total_orders) {
+                  // If we have more orders than invoice shows, try to match delivered/returned counts
+                  const neededDelivered = invoice.delivered_orders || 0;
+                  const neededReturned = invoice.return_orders || 0;
+                  
+                  const deliveredOrders = filteredOrders.filter(o => {
+                    const s = String(o.status || '').toLowerCase().trim();
+                    return s === 'delivered';
+                  });
+                  const returnedOrders = filteredOrders.filter(o => {
+                    const s = String(o.status || '').toLowerCase().trim();
+                    return s === 'returned' || s === 'return';
+                  });
+                  
+                  // Take needed counts from each category
+                  finalOrders = [
+                    ...deliveredOrders.slice(0, neededDelivered),
+                    ...returnedOrders.slice(0, neededReturned)
+                  ];
+                  
+                  // If still not enough, add remaining orders
+                  if (finalOrders.length < invoice.total_orders) {
+                    const remaining = filteredOrders.filter(o => !finalOrders.find(fo => fo.id === o.id));
+                    finalOrders = [...finalOrders, ...remaining.slice(0, invoice.total_orders - finalOrders.length)];
+                  }
+                } else if (invoice.total_orders && filteredOrders.length < invoice.total_orders) {
+                  // If we have fewer orders, use all we have
+                  finalOrders = filteredOrders;
+                }
+                
+                orders = finalOrders;
+                console.log('[GET /api/invoices/:id/pdf] Fallback: Using', orders.length, 'orders for PDF');
+                
+                // Process orders for Affan seller (recalculate DC for returns)
+                if (isAffanSeller && orders && orders.length > 0) {
+                  orders = orders.map(order => {
+                    try {
+                      const statusLower = String(order.status || '').toLowerCase().trim();
+                      const isReturned = statusLower === 'returned' || statusLower === 'return';
+                      
+                      // Only recalculate DC for returned orders
+                      if (isReturned) {
+                        const productCodesArray = parseProductCodes(order.product_codes || '');
+                        const productCount = productCodesArray.length;
+                        const calculatedDC = calculateAffanDC(productCount);
+                        
+                        return {
+                          ...order,
+                          delivery_charge: calculatedDC // Update DC to calculated value for returns only
+                        };
+                      } else {
+                        // Delivered orders: keep original DC and profit
+                        return order;
+                      }
+                    } catch (orderError) {
+                      console.error('[GET /api/invoices/:id/pdf] Fallback: Error processing order:', orderError, order);
+                      return order; // Return order as-is if processing fails
+                    }
+                  });
+                }
+              } else {
+                console.warn('[GET /api/invoices/:id/pdf] Fallback: Order counts don\'t match invoice, but will still try to use available orders');
+                console.warn('[GET /api/invoices/:id/pdf] Fallback: Total diff:', totalDiff, 'Delivered diff:', deliveredDiff, 'Returned diff:', returnedDiff);
+                // Even if counts don't match, if invoice shows orders exist, use what we have
+                if (filteredOrders.length > 0 && (invoice.total_orders || 0) > 0) {
+                  orders = filteredOrders.slice(0, Math.min(invoice.total_orders || filteredOrders.length, filteredOrders.length));
+                  console.log('[GET /api/invoices/:id/pdf] Fallback: Using', orders.length, 'orders despite count mismatch');
+                  
+                  // Process orders for Affan seller
+                  if (isAffanSeller && orders && orders.length > 0) {
+                    orders = orders.map(order => {
+                      try {
+                        const statusLower = String(order.status || '').toLowerCase().trim();
+                        const isReturned = statusLower === 'returned' || statusLower === 'return';
+                        
+                        if (isReturned) {
+                          const productCodesArray = parseProductCodes(order.product_codes || '');
+                          const productCount = productCodesArray.length;
+                          const calculatedDC = calculateAffanDC(productCount);
+                          
+                          return {
+                            ...order,
+                            delivery_charge: calculatedDC
+                          };
+                        } else {
+                          return order;
+                        }
+                      } catch (orderError) {
+                        console.error('[GET /api/invoices/:id/pdf] Fallback: Error processing order:', orderError, order);
+                        return order;
+                      }
+                    });
+                  }
+                }
+              }
+            } else {
+              console.warn('[GET /api/invoices/:id/pdf] Fallback: No orders found or error:', fallbackError);
+            }
+          } catch (fallbackErr) {
+            console.error('[GET /api/invoices/:id/pdf] Fallback error:', fallbackErr);
+          }
+        }
       }
+    } catch (ordersFetchError) {
+      console.error('[GET /api/invoices/:id/pdf] Error in orders fetch process:', ordersFetchError);
+      orders = []; // Use empty array as fallback
     }
 
-    const invoiceDate = invoice.invoice_date || invoice.created_at;
-    const sellerName = seller?.name || 'Unknown';
+    // FINAL SAFETY FALLBACK:
+    // If we still have NO orders but invoice shows total_orders > 0,
+    // try a very simple query directly on orders table (ignore is_paid/date filters)
+    try {
+      if ((!orders || orders.length === 0) && (invoice.total_orders || 0) > 0 && invoice.seller_id) {
+        console.warn('[GET /api/invoices/:id/pdf] No orders found yet, running final simple fallback query');
 
-    const html = `
+        const { data: finalFallbackOrders, error: finalFallbackError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('seller_id', invoice.seller_id)
+          .in('status', ['delivered', 'returned', 'return'])
+          .order('created_at', { ascending: false })
+          .limit(invoice.total_orders || 2000);
+
+        if (finalFallbackError) {
+          console.error('[GET /api/invoices/:id/pdf] Final fallback error:', finalFallbackError);
+        } else if (finalFallbackOrders && finalFallbackOrders.length > 0) {
+          console.log('[GET /api/invoices/:id/pdf] Final fallback: found', finalFallbackOrders.length, 'orders');
+          orders = finalFallbackOrders;
+
+          // Apply Affan DC recalculation for returns in final fallback as well
+          if (isAffanSeller) {
+            orders = orders.map(order => {
+              try {
+                const statusLower = String(order.status || '').toLowerCase().trim();
+                const isReturned = statusLower === 'returned' || statusLower === 'return';
+
+                if (isReturned) {
+                  const productCodesArray = parseProductCodes(order.product_codes || '');
+                  const productCount = productCodesArray.length;
+                  const calculatedDC = calculateAffanDC(productCount);
+
+                  return {
+                    ...order,
+                    delivery_charge: calculatedDC,
+                  };
+                }
+
+                return order;
+              } catch (orderError) {
+                console.error('[GET /api/invoices/:id/pdf] Final fallback: error processing order:', orderError, order);
+                return order;
+              }
+            });
+          }
+        } else {
+          console.warn('[GET /api/invoices/:id/pdf] Final fallback: still no orders found');
+        }
+      }
+    } catch (finalFallbackOuterError) {
+      console.error('[GET /api/invoices/:id/pdf] Final fallback outer error:', finalFallbackOuterError);
+    }
+    
+    console.log('[GET /api/invoices/:id/pdf] Final orders count:', orders && Array.isArray(orders) ? orders.length : 0);
+
+    // Ensure orders is always an array
+    if (!Array.isArray(orders)) {
+      console.warn('[GET /api/invoices/:id/pdf] Orders is not an array, converting to array');
+      orders = [];
+    }
+
+    const invoiceDate = invoice.invoice_date || invoice.created_at || new Date().toISOString();
+    
+    // Safely format date
+    let formattedDate = 'N/A';
+    try {
+      if (invoiceDate) {
+        formattedDate = new Date(invoiceDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      }
+    } catch (dateError) {
+      console.error('[GET /api/invoices/:id/pdf] Error formatting date:', dateError);
+      formattedDate = invoiceDate ? String(invoiceDate).split('T')[0] : 'N/A';
+    }
+
+    // Safely escape HTML to prevent XSS and template errors
+    const escapeHtml = (str) => {
+      if (str == null || str === undefined) return '';
+      try {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      } catch (e) {
+        return '';
+      }
+    };
+
+    // Safely format numbers
+    const safeNumber = (num, decimals = 2) => {
+      try {
+        const value = parseFloat(num || 0);
+        if (isNaN(value)) return '0.00';
+        return value.toFixed(decimals);
+      } catch (e) {
+        return '0.00';
+      }
+    };
+
+    let html = '';
+    try {
+      html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Invoice - ${invoice.bill_number}</title>
+  <title>Invoice - ${escapeHtml(invoice.bill_number || 'N/A')}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -3710,15 +4113,15 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
         </div>
       </div>
       <h2 style="color: #4F46E5; font-size: 24px; margin-top: 15px;">INVOICE</h2>
-      <p style="font-size: 16px; color: #666;">Bill Number: ${invoice.bill_number}</p>
+      <p style="font-size: 16px; color: #666;">Bill Number: ${escapeHtml(invoice.bill_number || 'N/A')}</p>
     </div>
     
     <div class="invoice-info">
       <div class="info-section">
         <h3>Seller Information</h3>
         <p><strong>Name:</strong> ${sellerName}</p>
-        ${seller?.email ? `<p><strong>Email:</strong> ${seller.email}</p>` : ''}
-        <p><strong>Invoice Date:</strong> ${new Date(invoiceDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        ${sellerEmail ? `<p><strong>Email:</strong> ${sellerEmail}</p>` : ''}
+        <p><strong>Invoice Date:</strong> ${formattedDate}</p>
         <p><strong>Status:</strong> <span class="status ${invoice.is_paid ? 'status-paid' : 'status-unpaid'}">${invoice.is_paid ? 'Paid' : 'Unpaid'}</span></p>
       </div>
       <div class="info-section">
@@ -3729,68 +4132,83 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
       </div>
     </div>
 
-    ${orders.length > 0 ? `
-    <h3 style="color: #4F46E5; margin-bottom: 15px;">Order Details</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Reference #</th>
-          <th>Tracking ID</th>
-          <th>Customer</th>
-          <th>Product</th>
-          <th>Status</th>
-          <th>Seller Price</th>
-          <th>Shipper Price</th>
-          <th>Delivery Charge</th>
-          <th>Profit</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${orders.map(order => {
-          const statusLower = String(order.status || '').toLowerCase().trim();
-          // Handle both "return" and "returned" for backward compatibility
-          const isReturned = statusLower === 'returned' || statusLower === 'return';
-          
-          // Calculate profit based on status
-// User requirement: "Delivery charges Of returned status as minus in profit"
-          // For return orders: show delivery charge as negative/minus in profit column
-          let displayProfit = 0;
-          if (isReturned) {
-            // For return orders: show delivery charge as negative in profit
-            // Orders already have calculated DC for Affan seller or original DC for others
-            const dcValue = parseFloat(order.delivery_charge || 0);
-            displayProfit = -Math.abs(dcValue); // Show DC as negative in profit column
-
-          } else {
-            // For delivered orders: use profit from order table
-            displayProfit = parseFloat(order.profit || 0);
-          }
-          
-          const profitColor = displayProfit >= 0 ? '#10B981' : '#EF4444';
-          const profitSign = displayProfit >= 0 ? '' : '-';
-          
-          // Count products (comma-separated)
-          const productCodesArray = parseProductCodes(order.product_codes || '');
-          const productCount = productCodesArray.length;
-          const products = productCodesArray.join(', ');
-          
-          return `
-          <tr>
-            <td>${order.seller_reference_number || '-'}</td>
-            <td>${order.tracking_id || '-'}</td>
-            <td>${order.customer_name || '-'}</td>
-            <td>${products} ${productCount > 0 ? `(${productCount})` : ''}</td>
-            <td>${(order.status || '').toUpperCase()}</td>
-            <td>Rs. ${parseFloat(order.seller_price || 0).toFixed(2)}</td>
-            <td>Rs. ${parseFloat(order.shipper_price || 0).toFixed(2)}</td>
-            <td style="color: ${parseFloat(order.delivery_charge || 0) < 0 ? '#EF4444' : '#333'}; font-weight: ${parseFloat(order.delivery_charge || 0) < 0 ? 'bold' : 'normal'};">Rs. ${parseFloat(order.delivery_charge || 0).toFixed(2)}</td>
-            <td style="color: ${profitColor}; font-weight: bold;">${profitSign}Rs. ${Math.abs(displayProfit).toFixed(2)}</td>
+    ${orders && orders.length > 0 ? `
+    <h3 style="color: #4F46E5; margin-bottom: 15px;">Order Details (${orders.length} orders) - Complete Information</h3>
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+        <thead>
+          <tr style="background: #4F46E5; color: white;">
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Reference #</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Tracking ID</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Customer</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Phone</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">City</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Address</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Courier</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Product</th>
+            <th style="padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ddd;">Status</th>
+            <th style="padding: 8px; text-align: right; font-weight: bold; border: 1px solid #ddd;">Seller Price</th>
+            <th style="padding: 8px; text-align: right; font-weight: bold; border: 1px solid #ddd;">Shipper Price</th>
+            <th style="padding: 8px; text-align: right; font-weight: bold; border: 1px solid #ddd;">Delivery Charge</th>
+            <th style="padding: 8px; text-align: right; font-weight: bold; border: 1px solid #ddd;">Profit</th>
           </tr>
-        `;
-        }).join('')}
-      </tbody>
-    </table>
-    ` : '<p>No orders found for this invoice.</p>'}
+        </thead>
+        <tbody>
+          ${(orders || []).map(order => {
+            // Safety check for order object
+            if (!order || typeof order !== 'object') {
+              console.warn('[GET /api/invoices/:id/pdf] Invalid order object:', order);
+              return '<tr><td colspan="13" style="padding: 10px; border: 1px solid #ddd;">Invalid order data</td></tr>';
+            }
+            const statusLower = String(order.status || '').toLowerCase().trim();
+            // Handle both "return" and "returned" for backward compatibility
+            const isReturned = statusLower === 'returned' || statusLower === 'return';
+            
+            // Calculate profit based on status
+            // User requirement: "Delivery charges Of returned status as minus in profit"
+            // For return orders: show delivery charge as negative/minus in profit column
+            let displayProfit = 0;
+            if (isReturned) {
+              // For return orders: show delivery charge as negative in profit
+              // Orders already have calculated DC for Affan seller or original DC for others
+              const dcValue = parseFloat(order.delivery_charge || 0);
+              displayProfit = -Math.abs(dcValue); // Show DC as negative in profit column
+
+            } else {
+              // For delivered orders: use profit from order table
+              displayProfit = parseFloat(order.profit || 0);
+            }
+            
+            const profitColor = displayProfit >= 0 ? '#10B981' : '#EF4444';
+            const profitSign = displayProfit >= 0 ? '' : '-';
+            
+            // Count products (comma-separated)
+            const productCodesArray = parseProductCodes(order.product_codes || '');
+            const productCount = productCodesArray.length;
+            const products = productCodesArray.join(', ');
+            
+            return `
+            <tr style="border-bottom: 1px solid #e0e0e0;">
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.seller_reference_number || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.tracking_id || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.customer_name || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.phone_number_1 || '-')}${order.phone_number_2 ? '<br/>' + escapeHtml(order.phone_number_2) : ''}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.city || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 9px; max-width: 150px;">${escapeHtml(order.customer_address || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(order.courier_service || '-')}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml(products)} ${productCount > 0 ? `(${productCount})` : ''}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-size: 10px;">${escapeHtml((order.status || '').toUpperCase())}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">Rs. ${safeNumber(order.seller_price)}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">Rs. ${safeNumber(order.shipper_price)}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${parseFloat(order.delivery_charge || 0) < 0 ? '#EF4444' : '#333'}; font-weight: ${parseFloat(order.delivery_charge || 0) < 0 ? 'bold' : 'normal'}; font-size: 10px;">Rs. ${safeNumber(order.delivery_charge)}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${profitColor}; font-weight: bold; font-size: 10px;">${profitSign}Rs. ${safeNumber(Math.abs(displayProfit))}</td>
+            </tr>
+          `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    ` : `<p style="color: #EF4444; font-weight: bold; padding: 20px; background: #fee; border: 2px solid #EF4444; border-radius: 8px;">⚠️ No orders found for this invoice. Invoice shows ${invoice.total_orders || 0} total orders, but no order details could be retrieved. Please check the invoice_orders table.</p>`}
 
     ${(() => {
       const deliveredCount = invoice.delivered_orders || 0;
@@ -3857,29 +4275,29 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     <div class="summary">
       <div class="summary-row">
         <span class="summary-label">Total Seller Price:</span>
-        <span>Rs. ${parseFloat(invoice.total_seller_price || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.total_seller_price)}</span>
       </div>
       <div class="summary-row">
         <span class="summary-label">Total Shipper Price:</span>
-        <span>Rs. ${parseFloat(invoice.total_shipper_price || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.total_shipper_price)}</span>
       </div>
       <div class="summary-row">
         <span class="summary-label">Total Delivery Charge:</span>
-        <span>Rs. ${parseFloat(invoice.total_delivery_charge || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.total_delivery_charge)}</span>
       </div>
       <div class="summary-row">
         <span class="summary-label">Total Profit:</span>
-        <span>Rs. ${parseFloat(invoice.total_profit || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.total_profit)}</span>
       </div>
       ${parseFloat(invoice.other_expenses || 0) > 0 ? `
       <div class="summary-row">
         <span class="summary-label">Other Expenses:</span>
-        <span>Rs. ${parseFloat(invoice.other_expenses || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.other_expenses)}</span>
       </div>
       ` : ''}
       <div class="summary-row">
         <span class="summary-label">Net Profit:</span>
-        <span>Rs. ${parseFloat(invoice.net_profit || 0).toFixed(2)}</span>
+        <span>Rs. ${safeNumber(invoice.net_profit)}</span>
       </div>
     </div>
 
@@ -3890,12 +4308,34 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
 </body>
 </html>
     `;
+    } catch (htmlError) {
+      console.error('[GET /api/invoices/:id/pdf] Error generating HTML template:', htmlError);
+      throw new Error(`HTML generation failed: ${htmlError.message}`);
+    }
 
-    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (error) {
-    console.error('Error generating invoice PDF:', error);
-    res.status(500).send('Internal server error');
+    console.error('[GET /api/invoices/:id/pdf] Error generating invoice PDF:', error);
+    console.error('[GET /api/invoices/:id/pdf] Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      stack: error.stack
+    });
+    
+    // Try to send a proper error response
+    try {
+      res.status(500).json({ 
+        error: 'Failed to generate invoice PDF',
+        details: error.message || 'Unknown error',
+        code: error.code || 'UNKNOWN_ERROR'
+      });
+    } catch (sendError) {
+      // If JSON response fails, send plain text
+      res.status(500).send(`Error generating invoice PDF: ${error.message || 'Unknown error'}`);
+    }
   }
 });
 
@@ -7908,24 +8348,40 @@ app.post('/api/orders/bulk-update-status', authenticateToken, async (req, res) =
       return res.status(400).json({ error: 'Orders array is required' });
     }
 
-    // seller_id is now optional - if not provided, process all orders from all sellers
+    // Optimized: Process in batches and use parallel operations
+    const BATCH_SIZE = 100; // Process 100 orders at a time
     const updated = [];
     const errors = [];
+    const refToStatusMap = new Map(); // Map reference numbers to statuses
 
+    // Build map of reference numbers to statuses (handle duplicates)
     for (const orderUpdate of orders) {
+      const { seller_reference_number, status } = orderUpdate;
+      if (!seller_reference_number) {
+        errors.push({ ref: 'N/A', error: 'Reference number is required' });
+        continue;
+      }
+      const ref = String(seller_reference_number).trim();
+      const normalizedStatus = String(status || 'delivered').toLowerCase().trim();
+      refToStatusMap.set(ref, normalizedStatus);
+    }
+
+    const referenceNumbers = Array.from(refToStatusMap.keys());
+    
+    if (referenceNumbers.length === 0) {
+      return res.json({ updated: [], errors });
+    }
+
+    // Process in batches for better performance
+    for (let i = 0; i < referenceNumbers.length; i += BATCH_SIZE) {
+      const batch = referenceNumbers.slice(i, i + BATCH_SIZE);
+      
       try {
-        const { seller_reference_number, status } = orderUpdate;
-
-        if (!seller_reference_number) {
-          errors.push({ ref: seller_reference_number || 'N/A', error: 'Reference number is required' });
-          continue;
-        }
-
-        // Find order by reference number (with optional seller_id filter)
+        // Batch fetch all orders for this batch of reference numbers
         let query = supabase
           .from('orders')
-          .select('id')
-          .eq('seller_reference_number', seller_reference_number);
+          .select('id, seller_reference_number')
+          .in('seller_reference_number', batch);
         
         if (seller_id) {
           query = query.eq('seller_id', seller_id);
@@ -7933,31 +8389,89 @@ app.post('/api/orders/bulk-update-status', authenticateToken, async (req, res) =
         
         const { data: ordersFound, error: findError } = await query;
 
-        if (findError || !ordersFound || ordersFound.length === 0) {
-          errors.push({ ref: seller_reference_number, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
+        if (findError) {
+          // If batch query fails, fall back to individual queries for this batch
+          console.error(`[Bulk Update Status] Batch query error, processing individually:`, findError);
+          for (const ref of batch) {
+            errors.push({ ref, error: 'Database query error' });
+          }
           continue;
         }
 
-        // If multiple orders found (same reference number for different sellers), update all
-        for (const order of ordersFound) {
-          // Update order status
-          const { error: updateError } = await supabase
-            .from('orders')
-            .update({ status: status.toLowerCase() })
-            .eq('id', order.id);
+        if (!ordersFound || ordersFound.length === 0) {
+          // No orders found for this batch
+          for (const ref of batch) {
+            errors.push({ ref, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
+          }
+          continue;
+        }
 
-          if (updateError) {
-            errors.push({ ref: seller_reference_number, error: updateError.message });
-          } else {
-            updated.push(seller_reference_number);
+        // Group orders by reference number and status
+        const updatesByStatus = new Map();
+        for (const order of ordersFound) {
+          const ref = order.seller_reference_number;
+          const status = refToStatusMap.get(ref);
+          if (status) {
+            if (!updatesByStatus.has(status)) {
+              updatesByStatus.set(status, []);
+            }
+            updatesByStatus.get(status).push(order.id);
           }
         }
+
+        // Batch update orders by status (one query per status)
+        const updatePromises = [];
+        for (const [status, orderIds] of updatesByStatus.entries()) {
+          if (orderIds.length > 0) {
+            updatePromises.push(
+              supabase
+                .from('orders')
+                .update({ status, updated_at: new Date().toISOString() })
+                .in('id', orderIds)
+                .then(({ error: updateError }) => {
+                  if (updateError) {
+                    // If batch update fails, track which refs failed
+                    const failedRefs = ordersFound
+                      .filter(o => orderIds.includes(o.id))
+                      .map(o => o.seller_reference_number);
+                    failedRefs.forEach(ref => {
+                      errors.push({ ref, error: updateError.message });
+                    });
+                  } else {
+                    // Success - track updated reference numbers
+                    const updatedRefs = ordersFound
+                      .filter(o => orderIds.includes(o.id))
+                      .map(o => o.seller_reference_number);
+                    updated.push(...updatedRefs);
+                  }
+                })
+            );
+          }
+        }
+
+        // Wait for all updates in this batch to complete
+        await Promise.all(updatePromises);
+
+        // Track reference numbers that were in the batch but not found
+        const foundRefs = new Set(ordersFound.map(o => o.seller_reference_number));
+        for (const ref of batch) {
+          if (!foundRefs.has(ref)) {
+            errors.push({ ref, error: seller_id ? 'Order not found for this seller' : 'Order not found' });
+          }
+        }
+
       } catch (error) {
-        errors.push({ ref: orderUpdate.seller_reference_number || 'N/A', error: error.message });
+        console.error(`[Bulk Update Status] Error processing batch:`, error);
+        for (const ref of batch) {
+          errors.push({ ref, error: error.message || 'Processing error' });
+        }
       }
     }
 
-    res.json({ updated, errors });
+    // Remove duplicates from updated array
+    const uniqueUpdated = [...new Set(updated)];
+
+    res.json({ updated: uniqueUpdated, errors });
   } catch (error) {
     console.error('Error bulk updating order status:', error);
     res.status(500).json({ error: 'Failed to bulk update order status' });

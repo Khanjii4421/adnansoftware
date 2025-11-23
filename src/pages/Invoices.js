@@ -120,13 +120,54 @@ const Invoices = () => {
   const handleDownloadPDF = async (invoiceId) => {
     try {
       const token = localStorage.getItem('token');
+      
+      // First check if invoice exists
+      try {
+        const checkResponse = await axios.get(`${API_URL}/invoices/${invoiceId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (!checkResponse.data || !checkResponse.data.invoice) {
+          showError('Invoice not found');
+          return;
+        }
+      } catch (checkError) {
+        const checkErrorMessage = checkError.response?.data?.error || checkError.response?.data?.details || checkError.message || 'Failed to fetch invoice';
+        showError(`Failed to fetch invoice: ${checkErrorMessage}`);
+        return;
+      }
+      
+      // Now fetch PDF
       const response = await axios.get(`${API_URL}/invoices/${invoiceId}/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob',
+        responseType: 'text', // Server returns HTML text
+        validateStatus: (status) => status < 500, // Don't throw on 4xx errors
       });
       
+      // Check if response is an error (JSON error response)
+      if (typeof response.data === 'string' && response.data.trim().startsWith('{')) {
+        try {
+          const errorData = JSON.parse(response.data);
+          if (errorData.error) {
+            showError(`Failed to download invoice: ${errorData.error}${errorData.details ? ' - ' + errorData.details : ''}`);
+            return;
+          }
+        } catch (parseError) {
+          // Not JSON, continue with HTML processing
+        }
+      }
+      
+      // Check if response status indicates error
+      if (response.status >= 400) {
+        const errorMessage = typeof response.data === 'object' 
+          ? (response.data.error || response.data.details || 'Unknown error')
+          : 'Failed to download invoice';
+        showError(`Failed to download invoice: ${errorMessage}`);
+        return;
+      }
+      
       // Create a blob URL and download
-      const blob = new Blob([response.data], { type: 'text/html' });
+      const blob = new Blob([response.data], { type: 'text/html; charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -145,7 +186,97 @@ const Invoices = () => {
       }
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      showError('Failed to download invoice');
+      console.error('Error response:', error.response);
+      const errorMessage = error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to download invoice';
+      showError(`Failed to download invoice: ${errorMessage}`);
+    }
+  };
+
+  const handleDownloadAllInvoicesExcel = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const filteredInvoices = invoices.filter(invoice => {
+        if (filterSellerId && String(invoice.seller_id) !== String(filterSellerId)) {
+          return false;
+        }
+        if (searchTerm) {
+          const searchLower = searchTerm.toLowerCase();
+          return (
+            invoice.bill_number?.toLowerCase().includes(searchLower) ||
+            invoice.invoice_date?.toLowerCase().includes(searchLower)
+          );
+        }
+        return true;
+      });
+
+      if (filteredInvoices.length === 0) {
+        alert('No invoices to download');
+        return;
+      }
+
+      // Prepare data for Excel
+      const invoiceData = [
+        ['Invoice Summary'],
+        ['Generated on:', new Date().toLocaleString()],
+        ['Total Invoices:', filteredInvoices.length],
+        [],
+        ['Invoice Details'],
+        ['Bill Number', 'Date', 'Seller', 'Total Orders', 'Delivered', 'Returns', 'Total Seller Price', 'Total Profit', 'Tax (4%)', 'Other Expenses', 'Net Profit', 'Status']
+      ];
+
+      filteredInvoices.forEach(invoice => {
+        const seller = sellers.find(s => s.id === invoice.seller_id);
+        const deliveredOrders = invoice.delivered_orders || 0;
+        const totalDeliveredSellerPrice = invoice.total_delivered_seller_price || 0;
+        const taxAmount = totalDeliveredSellerPrice * 0.04;
+        const netProfit = parseFloat(invoice.net_profit || 0);
+        
+        // Use seller_name from API response or fallback to sellers array
+        const sellerName = invoice.seller_name || seller?.name || 'N/A';
+        
+        invoiceData.push([
+          invoice.bill_number || '',
+          invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : '',
+          sellerName,
+          invoice.total_orders || 0,
+          deliveredOrders,
+          invoice.return_orders || 0,
+          totalDeliveredSellerPrice,
+          invoice.total_profit || 0,
+          taxAmount,
+          invoice.other_expenses || 0,
+          netProfit,
+          invoice.is_paid ? 'Paid' : 'Unpaid'
+        ]);
+      });
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(invoiceData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 15 }, // Bill Number
+        { wch: 12 }, // Date
+        { wch: 20 }, // Seller
+        { wch: 12 }, // Total Orders
+        { wch: 12 }, // Delivered
+        { wch: 12 }, // Returns
+        { wch: 18 }, // Total Seller Price
+        { wch: 15 }, // Total Profit
+        { wch: 12 }, // Tax
+        { wch: 15 }, // Other Expenses
+        { wch: 15 }, // Net Profit
+        { wch: 10 }  // Status
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+      const fileName = `all-invoices-${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      alert(`✅ Downloaded ${filteredInvoices.length} invoices as Excel`);
+    } catch (error) {
+      console.error('Error downloading all invoices:', error);
+      alert('Failed to download invoices as Excel');
     }
   };
 
@@ -156,6 +287,10 @@ const Invoices = () => {
       const invoiceResponse = await axios.get(`${API_URL}/invoices/${invoiceId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
+      if (!invoiceResponse.data || !invoiceResponse.data.invoice) {
+        throw new Error('Invalid invoice data received from server');
+      }
       
       const invoice = invoiceResponse.data.invoice;
       const orders = invoiceResponse.data.orders || [];
@@ -201,63 +336,75 @@ const Invoices = () => {
         ['Order Details']
       ];
 
-      // Header row (same for admin and seller)
-      invoiceData.push(['Ref #', 'Tracking ID', 'Customer Name', 'Phone', 'Address', 'City', 'Products', 'Status', 'Seller Price', 'Profit']);
+      // Header row with all required columns - Complete Details
+      invoiceData.push(['Reference #', 'Tracking ID', 'Customer', 'Phone', 'City', 'Address', 'Courier', 'Product', 'Status', 'Seller Price', 'Shipper Price', 'Delivery Charge', 'Profit']);
 
       // Add order rows and calculate totals
       let totalSellerPrice = 0;
+      let totalShipperPrice = 0;
+      let totalDeliveryCharge = 0;
       let totalProfit = 0;
       
       orders.forEach(order => {
         // Show seller price for all orders (delivered and return)
-        const displaySellerPrice = order.seller_price || 0;
-        totalSellerPrice += parseFloat(displaySellerPrice);
+        const displaySellerPrice = parseFloat(order.seller_price || 0);
+        const displayShipperPrice = parseFloat(order.shipper_price || 0);
+        const displayDeliveryCharge = parseFloat(order.delivery_charge || 0);
+        
+        totalSellerPrice += displaySellerPrice;
+        totalShipperPrice += displayShipperPrice;
+        totalDeliveryCharge += displayDeliveryCharge;
         
         // Calculate profit based on order status
         // For delivered: use profit from order table (seller_price - shipper_price - dc)
         // For returned: show delivery charge as negative/minus in profit (as per user requirement)
         let displayProfit = 0;
-        let profitText = '';
         const statusLower = String(order.status || '').toLowerCase();
         const norm = statusLower.replace(/[^a-z]/g, '');
         
         if (norm === 'delivered') {
           displayProfit = parseFloat(order.profit || 0);
-          profitText = displayProfit;
           totalProfit += displayProfit; // Add delivered profit
         } else if (norm === 'returned' || norm === 'return') {
           // Returned orders: show delivery charge as negative/minus in profit column
           // User requirement: "Delivery charges Of returned status as minus in profit"
           const dcValue = parseFloat(order.delivery_charge || 0);
           displayProfit = -Math.abs(dcValue); // Show DC as negative in profit
-          profitText = displayProfit; // Show negative DC value
           totalProfit += displayProfit; // Add negative DC to total (subtracts from total)
-        } else {
-          profitText = displayProfit;
         }
         
         // Ensure products are comma-separated
         const products = (order.product_codes || '').split(',').map(p => p.trim()).join(', ');
         
+        // Get phone numbers
+        const phone1 = order.phone_number_1 || '';
+        const phone2 = order.phone_number_2 || '';
+        const phoneDisplay = phone2 ? `${phone1}, ${phone2}` : phone1;
+        
         invoiceData.push([
           order.seller_reference_number || '',
           order.tracking_id || '-',
           order.customer_name || '',
-          order.phone_number_1 || '',
-          order.customer_address || '',
+          phoneDisplay,
           order.city || '',
+          order.customer_address || '',
+          order.courier_service || '',
           products,
-          order.status || '',
+          (order.status || '').toUpperCase(),
           displaySellerPrice,
-          profitText
+          displayShipperPrice,
+          displayDeliveryCharge,
+          displayProfit
         ]);
       });
       
       // Add TOTAL row
       invoiceData.push([]);
       invoiceData.push([
-        '', '', '', '', '', '', '', 'TOTAL:',
+        '', '', '', '', '', '', '', '', 'TOTAL:',
         totalSellerPrice,
+        totalShipperPrice,
+        totalDeliveryCharge,
         totalProfit
       ]);
 
@@ -265,25 +412,29 @@ const Invoices = () => {
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(invoiceData);
       
-      // Set column widths (same for admin and seller now)
+      // Set column widths for all columns
       ws['!cols'] = [
-        { wch: 15 }, // Ref #
-        { wch: 15 }, // Tracking ID
-        { wch: 20 }, // Customer Name
-        { wch: 15 }, // Phone
-        { wch: 30 }, // Address
+        { wch: 18 }, // Reference #
+        { wch: 18 }, // Tracking ID
+        { wch: 25 }, // Customer
+        { wch: 20 }, // Phone
         { wch: 15 }, // City
-        { wch: 20 }, // Products
+        { wch: 35 }, // Address
+        { wch: 15 }, // Courier
+        { wch: 30 }, // Product
         { wch: 12 }, // Status
         { wch: 15 }, // Seller Price
-        { wch: 20 }  // Profit
+        { wch: 15 }, // Shipper Price
+        { wch: 18 }, // Delivery Charge
+        { wch: 15 }  // Profit
       ];
 
       XLSX.utils.book_append_sheet(wb, ws, 'Invoice');
       XLSX.writeFile(wb, `invoice-${invoice.bill_number}-${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error) {
       console.error('Error downloading XLS:', error);
-      alert('Failed to download invoice as Excel');
+      const errorMessage = error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to download invoice as Excel';
+      showError(`Failed to download invoice as Excel: ${errorMessage}`);
     }
   };
 
@@ -460,12 +611,21 @@ const Invoices = () => {
             {user?.role === 'admin' ? 'Invoices & Billing' : 'My Invoices'}
           </h1>
           {user?.role === 'admin' && (
-            <button
-              onClick={() => setShowGenerateModal(true)}
-              className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 transition-colors shadow-lg whitespace-nowrap"
-            >
-              ➕ Generate Invoice
-            </button>
+            <div className="flex gap-2 sm:gap-3 flex-wrap">
+              <button
+                onClick={() => setShowGenerateModal(true)}
+                className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-indigo-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-indigo-700 transition-colors shadow-lg whitespace-nowrap"
+              >
+                ➕ Generate Invoice
+              </button>
+              <button
+                onClick={handleDownloadAllInvoicesExcel}
+                className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-green-600 text-white text-xs sm:text-sm md:text-base rounded-lg hover:bg-green-700 transition-colors shadow-lg whitespace-nowrap flex items-center gap-1 sm:gap-2"
+                title="Download all invoices as Excel"
+              >
+                📊 Download Excel
+              </button>
+            </div>
           )}
         </div>
 
@@ -583,6 +743,23 @@ const Invoices = () => {
           </div>
         )}
 
+        {/* Download Section */}
+        <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">📥 Download Options</h3>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleDownloadAllInvoicesExcel}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-2"
+              title="Download all invoices (or filtered invoices) as Excel"
+            >
+              📊 Download All Invoices (Excel)
+            </button>
+            <p className="text-xs text-gray-500 flex items-center">
+              Downloads {filterSellerId || searchTerm ? 'filtered' : 'all'} invoices as Excel file with invoice summary
+            </p>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -614,6 +791,21 @@ const Invoices = () => {
                       Returns
                     </th>
                     <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Seller Price
+                    </th>
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Profit
+                    </th>
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Tax (4%)
+                    </th>
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Other Expenses
+                    </th>
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Net Profit
+                    </th>
+                    <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Payment Status
                     </th>
                     <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -624,7 +816,7 @@ const Invoices = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={user?.role === 'admin' ? 8 : 7} className="px-3 sm:px-6 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-500">
+                      <td colSpan={user?.role === 'admin' ? 13 : 12} className="px-3 sm:px-6 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-500">
                         No invoices found
                       </td>
                     </tr>
@@ -650,6 +842,21 @@ const Invoices = () => {
                         </td>
                         <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-red-600 font-semibold">
                           {invoice.return_orders}
+                        </td>
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-700 font-medium">
+                          Rs. {parseFloat(invoice.total_seller_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-blue-700 font-semibold">
+                          Rs. {parseFloat(invoice.total_profit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-purple-700 font-medium">
+                          Rs. {parseFloat((invoice.total_delivered_seller_price || invoice.total_seller_price || 0) * 0.04).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-orange-700 font-medium">
+                          Rs. {parseFloat(invoice.other_expenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-green-700 font-bold">
+                          Rs. {parseFloat(invoice.net_profit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
                           {invoice.is_paid ? (
@@ -868,7 +1075,7 @@ const Invoices = () => {
                 </div>
 
                 <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-2">Order Summary</h4>
+                  <h4 className="font-semibold mb-2">Order Summary - Detailed View ({invoiceOrders.length} orders)</h4>
                   <div className="overflow-x-auto" style={{ maxHeight: '500px', overflowY: 'auto' }}>
                     <table className="min-w-full divide-y divide-gray-200" style={{ tableLayout: 'auto' }}>
                       <thead className="bg-gray-50" style={{ position: 'sticky', top: 0, zIndex: 10 }}>
@@ -876,6 +1083,10 @@ const Invoices = () => {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Ref #</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Tracking ID</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Phone</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">City</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Address</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Courier</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Products</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Seller Price</th>
@@ -919,6 +1130,19 @@ const Invoices = () => {
                             <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{order.seller_reference_number}</td>
                             <td className="px-4 py-3 text-sm font-semibold text-blue-600 whitespace-nowrap">{order.tracking_id || '-'}</td>
                             <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{order.customer_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                              <div className="flex flex-col gap-1">
+                                <span>{order.phone_number_1 || '-'}</span>
+                                {order.phone_number_2 && <span className="text-xs text-gray-500">{order.phone_number_2}</span>}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{order.city || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">
+                              <div className="truncate" title={order.customer_address}>
+                                {order.customer_address || '-'}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{order.courier_service || '-'}</td>
                             <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
                               {products} {productCount > 0 && <span className="text-xs text-gray-400">({productCount})</span>}
                             </td>
@@ -952,7 +1176,7 @@ const Invoices = () => {
                       })}
                       {/* TOTAL ROW */}
                       <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-600">
-                        <td colSpan="5" className="px-4 py-3 text-sm text-right text-indigo-900 uppercase tracking-wider">
+                        <td colSpan="9" className="px-4 py-3 text-sm text-right text-indigo-900 uppercase tracking-wider">
                           <strong>TOTAL:</strong>
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-green-700 whitespace-nowrap">
@@ -1182,7 +1406,7 @@ const Invoices = () => {
 
               <div className="space-y-4">
                 <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-3 text-lg">Orders/Parcels in this Invoice</h4>
+                  <h4 className="font-semibold mb-3 text-lg">Orders/Parcels in this Invoice - Complete Details ({paidOrders.length} orders)</h4>
                   <div className="overflow-x-auto" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                     <table className="min-w-full divide-y divide-gray-200 border" style={{ tableLayout: 'auto' }}>
                       <thead className="bg-gray-100" style={{ position: 'sticky', top: 0, zIndex: 10 }}>
@@ -1192,6 +1416,8 @@ const Invoices = () => {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Customer</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Phone</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">City</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Address</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Courier</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Products</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Status</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Seller Price</th>
@@ -1201,7 +1427,7 @@ const Invoices = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {paidOrders.length === 0 ? (
                           <tr>
-                            <td colSpan="9" className="px-4 py-4 text-center text-gray-500">No orders found</td>
+                            <td colSpan="11" className="px-4 py-4 text-center text-gray-500">No orders found</td>
                           </tr>
                         ) : (
                           paidOrders.map((order, index) => {
@@ -1225,8 +1451,19 @@ const Invoices = () => {
                                 <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{order.seller_reference_number}</td>
                                 <td className="px-4 py-3 text-sm font-semibold text-blue-600 whitespace-nowrap">{order.tracking_id || '-'}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{order.customer_name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{order.phone_number_1}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                  <div className="flex flex-col gap-1">
+                                    <span>{order.phone_number_1}</span>
+                                    {order.phone_number_2 && <span className="text-xs text-gray-500">{order.phone_number_2}</span>}
+                                  </div>
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{order.city || '-'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">
+                                  <div className="truncate" title={order.customer_address}>
+                                    {order.customer_address || '-'}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{order.courier_service || '-'}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{products}</td>
                                 <td className="px-4 py-3 text-sm whitespace-nowrap">
                                   <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -1253,7 +1490,7 @@ const Invoices = () => {
                         {/* TOTAL ROW */}
                         {paidOrders.length > 0 && (
                           <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-600">
-                            <td colSpan="7" className="px-4 py-3 text-sm text-right text-indigo-900 uppercase tracking-wider">
+                            <td colSpan="9" className="px-4 py-3 text-sm text-right text-indigo-900 uppercase tracking-wider">
                               <strong>TOTAL:</strong>
                             </td>
                             <td className="px-4 py-3 text-sm font-bold text-green-700 whitespace-nowrap">

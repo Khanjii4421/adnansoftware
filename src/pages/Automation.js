@@ -19,6 +19,26 @@ const Automation = () => {
   const [returnScanTrackingIds, setReturnScanTrackingIds] = useState('');
   const [digiPortalSyncing, setDigiPortalSyncing] = useState(false);
   const [digiPortalResults, setDigiPortalResults] = useState(null);
+  const [sellers, setSellers] = useState([]);
+  const [selectedSeller, setSelectedSeller] = useState('');
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      fetchSellers();
+    }
+  }, [user]);
+
+  const fetchSellers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/sellers`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSellers(response.data.sellers || []);
+    } catch (error) {
+      console.error('Error fetching sellers:', error);
+    }
+  };
 
   if (user?.role !== 'admin') {
     return (
@@ -54,33 +74,64 @@ const Automation = () => {
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
           // Process the data
-          const orders = jsonData.map(row => ({
-            seller_reference_number: row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || '',
-            status: (row['Status'] || row['status'] || 'delivered').toLowerCase()
-          })).filter(order => order.seller_reference_number);
+          const orders = jsonData.map(row => {
+            const refNumber = row['Reference Number'] || row['ref_number'] || row['Ref #'] || row['Seller Reference Number'] || row['Reference'] || '';
+            const status = (row['Status'] || row['status'] || 'delivered').toLowerCase().trim();
+            return {
+              seller_reference_number: String(refNumber).trim(),
+              status: status
+            };
+          }).filter(order => order.seller_reference_number && order.seller_reference_number.length > 0);
 
           if (orders.length === 0) {
-            alert('No valid orders found in the file. Please check the format.');
+            alert('No valid orders found in the file. Please check the format. Each row must have a Reference Number and optionally a Status.');
             setUploading(false);
             return;
           }
 
-          // Send to API - process all orders (no seller filter)
+          // Validate that all orders have required fields
+          const invalidOrders = orders.filter(order => !order.seller_reference_number || !order.status);
+          if (invalidOrders.length > 0) {
+            alert(`Found ${invalidOrders.length} orders with missing required fields. Please check your file.`);
+            setUploading(false);
+            return;
+          }
+
+          // Send to API - include seller_id if selected
           const token = localStorage.getItem('token');
+          const requestBody = { orders };
+          if (selectedSeller) {
+            requestBody.seller_id = selectedSeller;
+          }
+          
+          // Show processing message for large batches
+          if (orders.length > 50) {
+            console.log(`Processing ${orders.length} orders... This may take a moment.`);
+          }
+          
+          const startTime = Date.now();
           const response = await axios.post(
             `${API_URL}/orders/bulk-update-status`,
-            { orders, status: 'bulk' },
+            requestBody,
             {
-              headers: { Authorization: `Bearer ${token}` }
+              headers: { Authorization: `Bearer ${token}` },
+              timeout: 300000 // 5 minutes timeout for large batches
             }
           );
+          const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
           setResults(response.data);
-          alert(`Processed ${orders.length} orders: ${response.data.updated.length} updated, ${response.data.errors.length} errors`);
+          const updatedCount = response.data.updated?.length || 0;
+          const errorCount = response.data.errors?.length || 0;
+          alert(`✅ Processed ${orders.length} orders in ${processingTime}s\n\nUpdated: ${updatedCount}\nErrors: ${errorCount}`);
           setUploadFile(null);
         } catch (error) {
           console.error('Error processing file:', error);
-          alert('Error processing file: ' + error.message);
+          const errorMessage = error.response?.data?.error || error.message || 'Unknown error occurred';
+          alert(`Error processing file: ${errorMessage}`);
+          if (error.response?.data?.error) {
+            console.error('Server error details:', error.response.data);
+          }
         } finally {
           setUploading(false);
         }
@@ -95,10 +146,16 @@ const Automation = () => {
   };
 
   const handleManualUpdate = async () => {
-    const validUpdates = manualUpdates.filter(update => update.seller_reference_number.trim());
+    // Filter and validate updates - ensure proper format
+    const validUpdates = manualUpdates
+      .filter(update => update.seller_reference_number && update.seller_reference_number.trim().length > 0)
+      .map(update => ({
+        seller_reference_number: String(update.seller_reference_number).trim(),
+        status: (update.status || 'delivered').toLowerCase().trim()
+      }));
     
     if (validUpdates.length === 0) {
-      alert('Please add at least one order to update');
+      alert('Please add at least one order with a valid reference number to update');
       return;
     }
 
@@ -107,18 +164,39 @@ const Automation = () => {
 
     try {
       const token = localStorage.getItem('token');
+      const requestBody = { orders: validUpdates };
+      if (selectedSeller) {
+        requestBody.seller_id = selectedSeller;
+      }
+      
+      // Show processing message for large batches
+      if (validUpdates.length > 50) {
+        console.log(`Processing ${validUpdates.length} orders... This may take a moment.`);
+      }
+      
+      const startTime = Date.now();
       const response = await axios.post(
         `${API_URL}/orders/bulk-update-status`,
-        { orders: validUpdates },
+        requestBody,
         {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 300000 // 5 minutes timeout for large batches
         }
       );
+      const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
       setResults(response.data);
-      alert(`Processed ${validUpdates.length} orders: ${response.data.updated.length} updated, ${response.data.errors.length} errors`);
+      const updatedCount = response.data.updated?.length || 0;
+      const errorCount = response.data.errors?.length || 0;
+      alert(`✅ Processed ${validUpdates.length} orders in ${processingTime}s\n\nUpdated: ${updatedCount}\nErrors: ${errorCount}`);
       setManualUpdates([{ seller_reference_number: '', status: 'delivered' }]);
     } catch (error) {
+      console.error('Error updating orders:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Unknown error occurred';
+      alert(`Error updating orders: ${errorMessage}`);
+      if (error.response?.data?.error) {
+        console.error('Server error details:', error.response.data);
+      }
       console.error('Error updating orders:', error);
       alert('Error updating orders: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -316,18 +394,31 @@ const Automation = () => {
         <h1 className="text-3xl font-bold text-gray-900">Automation & Bulk Operations</h1>
         <p className="text-gray-600">Manage orders in bulk - status updates, tracking IDs, and return scans</p>
 
-        {/* Info: All Orders */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">ℹ️</span>
-            <div>
-              <p className="font-semibold text-blue-900">Processing All Orders</p>
-              <p className="text-sm text-blue-700 mt-1">
-                All operations will process orders from all sellers automatically. No seller selection needed.
-              </p>
-            </div>
+        {/* Seller Selection for Status Updates */}
+        {activeTab === 'status' && (
+          <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Seller (Optional)
+            </label>
+            <select
+              value={selectedSeller}
+              onChange={(e) => setSelectedSeller(e.target.value)}
+              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">All Sellers</option>
+              {sellers.map((seller) => (
+                <option key={seller.id} value={seller.id}>
+                  {seller.name} ({seller.email})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-2">
+              {selectedSeller 
+                ? 'Only orders from the selected seller will be updated.'
+                : 'Orders from all sellers will be processed. Select a seller to filter.'}
+            </p>
           </div>
-        </div>
+        )}
 
         {/* Tabs */}
         <div className="flex space-x-4 border-b border-gray-200">
