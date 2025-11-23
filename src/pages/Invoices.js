@@ -507,10 +507,19 @@ const Invoices = () => {
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editData, setEditData] = useState({
+    bill_number: '',
+    other_expenses: 0,
+    invoice_date: ''
+  });
 
   const handleDeleteInvoice = (invoiceId, billNumber) => {
+    console.log('Delete invoice clicked:', { invoiceId, billNumber });
     setInvoiceToDelete({ id: invoiceId, billNumber });
     setShowPasswordModal(true);
+    console.log('Modal should now be visible');
   };
 
   const confirmDeleteInvoice = async (password) => {
@@ -528,6 +537,38 @@ const Invoices = () => {
     } catch (error) {
       console.error('Error deleting invoice:', error);
       throw new Error(error.response?.data?.error || 'Failed to delete invoice');
+    }
+  };
+
+  const handleEditInvoice = (invoice) => {
+    setEditingInvoice(invoice);
+    setEditData({
+      bill_number: invoice.bill_number || '',
+      other_expenses: invoice.other_expenses || 0,
+      invoice_date: invoice.invoice_date ? new Date(invoice.invoice_date).toISOString().split('T')[0] : ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateInvoice = async (e) => {
+    e.preventDefault();
+    
+    if (!editingInvoice) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_URL}/invoices/${editingInvoice.id}`, editData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert('✅ Invoice updated successfully!');
+      setShowEditModal(false);
+      setEditingInvoice(null);
+      fetchInvoices();
+    } catch (error) {
+      console.error('Error updating invoice:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to update invoice';
+      showError(`Failed to update invoice: ${errorMessage}`);
     }
   };
 
@@ -900,6 +941,13 @@ const Invoices = () => {
                           {user?.role === 'admin' && (
                             <>
                               <button
+                                onClick={() => handleEditInvoice(invoice)}
+                                className="text-blue-600 hover:text-blue-900 text-xs sm:text-sm"
+                                title="Edit Invoice"
+                              >
+                                ✏️
+                              </button>
+                              <button
                                 onClick={() => sendWhatsAppReminder(invoice)}
                                 className="text-green-500 hover:text-green-700 text-xs sm:text-sm"
                                 title="Send WhatsApp"
@@ -910,7 +958,7 @@ const Invoices = () => {
                                 <button
                                   onClick={() => handleDeleteInvoice(invoice.id, invoice.bill_number)}
                                   className="text-red-600 hover:text-red-900 text-xs sm:text-sm"
-                                  title="Delete Invoice (Requires Confirmation)"
+                                  title="Delete Invoice (Requires Password)"
                                 >
                                   🗑️
                                 </button>
@@ -931,7 +979,20 @@ const Invoices = () => {
         {showGenerateModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold mb-4">Generate Invoice</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Generate Invoice</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('TEST from Generate Modal: Opening password modal');
+                    setShowPasswordModal(true);
+                    setInvoiceToDelete({ id: 'test-generate', billNumber: 'TEST-GENERATE-001' });
+                  }}
+                  className="text-xs bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700"
+                >
+                  🧪 Test
+                </button>
+              </div>
               <form onSubmit={handleGenerateInvoice}>
                 <div className="space-y-4">
                   <div>
@@ -1578,33 +1639,140 @@ const Invoices = () => {
         )}
       </div>
 
-        {/* Error Modal */}
-        {showErrorModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 relative">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-red-600">Error</h3>
-                <button
-                  onClick={closeError}
-                  className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="p-6">
-                <p className="text-gray-700">{errorMessage}</p>
-              </div>
-              <div className="flex justify-end p-4 border-t border-gray-200">
-                <button
-                  onClick={closeError}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
+        {/* TEST: Debug button to test password modal */}
+        {user?.role === 'admin' && (
+          <div className="fixed bottom-4 right-4 z-50">
+            <button
+              onClick={() => {
+                console.log('TEST: Opening password modal directly');
+                setShowPasswordModal(true);
+                setInvoiceToDelete({ id: 'test-id', billNumber: 'TEST-001' });
+              }}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700"
+            >
+              🧪 Test Password Modal
+            </button>
           </div>
         )}
+
+        {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 relative">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-red-600">Error</h3>
+              <button
+                onClick={closeError}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700">{errorMessage}</p>
+            </div>
+            <div className="flex justify-end p-4 border-t border-gray-200">
+              <button
+                onClick={closeError}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Invoice Modal */}
+      {showEditModal && editingInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Edit Invoice</h3>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingInvoice(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateInvoice} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Bill Number *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editData.bill_number}
+                  onChange={(e) => setEditData({ ...editData, bill_number: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., INV-001"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editData.invoice_date}
+                  onChange={(e) => setEditData({ ...editData, invoice_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Other Expenses (Rs.)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editData.other_expenses}
+                  onChange={(e) => setEditData({ ...editData, other_expenses: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter other expenses"
+                />
+              </div>
+
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+                <p className="text-sm text-blue-900">
+                  <strong>Note:</strong> You can update the bill number, invoice date, and other expenses. 
+                  Order totals are calculated automatically and cannot be edited.
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingInvoice(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  💾 Update Invoice
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <PasswordConfirmModal
         isOpen={showPasswordModal}
         onClose={() => {

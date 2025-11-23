@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import PasswordConfirmModal from '../components/PasswordConfirmModal';
 
 import { API_URL } from '../utils/api';
 
@@ -49,7 +50,7 @@ const GenerateBill = () => {
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [transactionId, setTransactionId] = useState('');
   const [receivedBy, setReceivedBy] = useState('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [billToDelete, setBillToDelete] = useState(null);
   const [dashboardStats, setDashboardStats] = useState({
     totalBills: 0,
@@ -64,6 +65,14 @@ const GenerateBill = () => {
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [reminderCustomers, setReminderCustomers] = useState([]);
   const [selectedReminderCustomer, setSelectedReminderCustomer] = useState(null);
+  const [showEditPaymentModal, setShowEditPaymentModal] = useState(false);
+  const [paymentToEdit, setPaymentToEdit] = useState(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState(0);
+  const [editPaymentDate, setEditPaymentDate] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('Cash');
+  const [editTransactionId, setEditTransactionId] = useState('');
+  const [editReceivedBy, setEditReceivedBy] = useState('');
+  const [editPaymentDescription, setEditPaymentDescription] = useState('');
 
   useEffect(() => {
     fetchCustomers();
@@ -677,10 +686,10 @@ const GenerateBill = () => {
 
   const handleDeleteBill = (bill) => {
     setBillToDelete(bill);
-    setShowDeleteConfirm(true);
+    setShowPasswordModal(true);
   };
 
-  const confirmDeleteBill = async () => {
+  const confirmDeleteBill = async (password) => {
     if (!billToDelete) return;
     
     try {
@@ -693,13 +702,14 @@ const GenerateBill = () => {
       // Encode bill number to handle special characters
       const encodedBillNumber = encodeURIComponent(billNumber);
       const response = await axios.delete(`${API_URL}/bills/${encodedBillNumber}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password }
       });
 
       console.log('[Delete] Success response:', response.data);
       
       setMessage({ type: 'success', text: `Bill ${billNumber} deleted successfully` });
-      setShowDeleteConfirm(false);
+      setShowPasswordModal(false);
       setBillToDelete(null);
       
       // Refresh bills list
@@ -723,8 +733,7 @@ const GenerateBill = () => {
                           'Failed to delete bill. Please check console for details.';
       
       setMessage({ type: 'error', text: errorMessage });
-      setShowDeleteConfirm(false);
-      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+      throw new Error(errorMessage);
     }
   };
 
@@ -1009,6 +1018,69 @@ const GenerateBill = () => {
         type: 'error', 
         text: `${errorMessage}${errorDetails ? `: ${errorDetails}` : ''}${errorHint ? ` (${errorHint})` : ''}` 
       });
+    }
+  };
+
+  const handleEditPayment = (payment) => {
+    setPaymentToEdit(payment);
+    setEditPaymentAmount(parseFloat(payment.credit || 0));
+    setEditPaymentDate(payment.date || payment.created_at ? new Date(payment.date || payment.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditPaymentMethod(payment.payment_method || 'Cash');
+    setEditTransactionId(payment.transaction_id || '');
+    setEditReceivedBy(payment.received_by || '');
+    setEditPaymentDescription(payment.description || '');
+    setShowEditPaymentModal(true);
+  };
+
+  const handleUpdatePayment = async () => {
+    if (!paymentToEdit) return;
+    
+    if (editPaymentAmount <= 0) {
+      setMessage({ type: 'error', text: 'Payment amount must be greater than 0' });
+      return;
+    }
+
+    if (editPaymentMethod === 'Cash' && !editReceivedBy) {
+      setMessage({ type: 'error', text: 'Please enter "Received By" name for Cash payment' });
+      return;
+    }
+
+    if (editPaymentMethod === 'Bank Transfer' && !editTransactionId) {
+      setMessage({ type: 'error', text: 'Please enter Transaction ID for Bank Transfer' });
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.put(`${API_URL}/ledger/transactions/${paymentToEdit.id}`, {
+        credit: editPaymentAmount,
+        date: editPaymentDate,
+        payment_method: editPaymentMethod,
+        transaction_id: editPaymentMethod === 'Bank Transfer' ? editTransactionId : null,
+        received_by: editPaymentMethod === 'Cash' ? editReceivedBy : null,
+        description: editPaymentDescription || 'Payment received'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setMessage({ type: 'success', text: 'Payment updated successfully!' });
+      setShowEditPaymentModal(false);
+      setPaymentToEdit(null);
+      
+      // Refresh payment history if bill view modal is open
+      if (showBillViewModal && selectedBillForView) {
+        fetchPaymentHistory(selectedBillForView.bill_number, paymentHistoryFilter);
+      }
+      
+      // Refresh bills list
+      await fetchBills();
+      window.dispatchEvent(new Event('billsUpdated'));
+      
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to update payment';
+      setMessage({ type: 'error', text: errorMessage });
     }
   };
 
@@ -2027,6 +2099,7 @@ const GenerateBill = () => {
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction ID</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -2058,6 +2131,15 @@ const GenerateBill = () => {
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-500">
                                 {payment.description || 'Payment received'}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                <button
+                                  onClick={() => handleEditPayment(payment)}
+                                  className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+                                  title="Edit Payment"
+                                >
+                                  ✏️ Edit
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -2109,6 +2191,14 @@ const GenerateBill = () => {
                                 <p className="text-gray-500 text-xs">{payment.description}</p>
                               </div>
                             )}
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <button
+                              onClick={() => handleEditPayment(payment)}
+                              className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs font-medium"
+                            >
+                              ✏️ Edit Payment
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -2258,34 +2348,151 @@ const GenerateBill = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteConfirm && billToDelete && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold mb-4 text-red-600">Confirm Delete</h3>
-              <p className="text-sm text-gray-700 mb-4">
-                Are you sure you want to delete bill <strong>{billToDelete.bill_number}</strong>? 
-                This action cannot be undone and will delete all entries for this bill.
-              </p>
-              <div className="flex justify-end space-x-2">
+        {/* Edit Payment Modal */}
+        {showEditPaymentModal && paymentToEdit && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
+            <div className="bg-white rounded-lg p-4 md:p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold mb-4">Edit Payment</h3>
+              
+              <div className="space-y-4 mb-4">
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">Bill Number: <strong>{paymentToEdit.bill_number || 'N/A'}</strong></p>
+                  <p className="text-sm text-gray-600">Customer: <strong>{paymentToEdit.customers?.name || 'N/A'}</strong></p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Amount (Rs.) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    value={editPaymentAmount}
+                    onChange={(e) => setEditPaymentAmount(parseFloat(e.target.value || 0))}
+                    placeholder="Enter payment amount"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    value={editPaymentDate}
+                    onChange={(e) => setEditPaymentDate(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    value={editPaymentMethod}
+                    onChange={(e) => {
+                      setEditPaymentMethod(e.target.value);
+                      if (e.target.value === 'Bank Transfer') {
+                        setEditReceivedBy('');
+                      } else if (e.target.value === 'Cash') {
+                        setEditTransactionId('');
+                      }
+                    }}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="JazzCash">JazzCash</option>
+                    <option value="EasyPaisa">EasyPaisa</option>
+                  </select>
+                </div>
+
+                {editPaymentMethod === 'Cash' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Received By <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editReceivedBy}
+                      onChange={(e) => setEditReceivedBy(e.target.value)}
+                      placeholder="Enter name of person who received payment"
+                    />
+                  </div>
+                )}
+
+                {editPaymentMethod === 'Bank Transfer' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transaction ID <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      value={editTransactionId}
+                      onChange={(e) => setEditTransactionId(e.target.value)}
+                      placeholder="Enter transaction ID"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    rows="3"
+                    value={editPaymentDescription}
+                    onChange={(e) => setEditPaymentDescription(e.target.value)}
+                    placeholder="Enter payment description (optional)"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   onClick={() => {
-                    setShowDeleteConfirm(false);
-                    setBillToDelete(null);
+                    setShowEditPaymentModal(false);
+                    setPaymentToEdit(null);
+                    setEditPaymentAmount(0);
+                    setEditPaymentDate('');
+                    setEditPaymentMethod('Cash');
+                    setEditTransactionId('');
+                    setEditReceivedBy('');
+                    setEditPaymentDescription('');
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={confirmDeleteBill}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  onClick={handleUpdatePayment}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  Delete
+                  Update Payment
                 </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Password Protection Modal for Delete */}
+        {billToDelete && (
+          <PasswordConfirmModal
+            isOpen={showPasswordModal}
+            onClose={() => {
+              setShowPasswordModal(false);
+              setBillToDelete(null);
+            }}
+            onConfirm={confirmDeleteBill}
+            title="Delete Bill"
+            message={`Are you sure you want to delete bill ${billToDelete.bill_number}? This action cannot be undone and will delete all entries for this bill.`}
+          />
         )}
 
 

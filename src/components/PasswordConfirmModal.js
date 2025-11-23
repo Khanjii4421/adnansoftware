@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 
 const PasswordConfirmModal = ({ isOpen, onClose, onConfirm, title = 'Confirm Deletion', message = 'This action cannot be undone.' }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  console.log('PasswordConfirmModal render:', { isOpen, title, mounted });
+
+  if (!isOpen || !mounted) return null;
+
+  console.log('PasswordConfirmModal is OPEN and rendering!');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,9 +45,38 @@ const PasswordConfirmModal = ({ isOpen, onClose, onConfirm, title = 'Confirm Del
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+  const modalContent = (
+    <div 
+      style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        bottom: 0, 
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      }}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div 
+        style={{ 
+          backgroundColor: 'white', 
+          borderRadius: '8px', 
+          padding: '24px', 
+          maxWidth: '500px', 
+          width: '100%',
+          margin: '16px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          zIndex: 10000
+        }}
+        className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl"
+      >
+        <div style={{ backgroundColor: 'red', color: 'white', padding: '8px', marginBottom: '12px', textAlign: 'center', fontWeight: 'bold' }}>
+          🔴 PASSWORD MODAL IS VISIBLE 🔴
+        </div>
         <h3 className="text-xl font-bold text-red-600 mb-2">{title}</h3>
         <p className="text-gray-700 mb-4">{message}</p>
         <p className="text-sm text-gray-600 mb-4 font-semibold">
@@ -86,6 +126,13 @@ const PasswordConfirmModal = ({ isOpen, onClose, onConfirm, title = 'Confirm Del
       </div>
     </div>
   );
+
+  // Render using portal to ensure it's at the top level
+  if (typeof document !== 'undefined') {
+    return ReactDOM.createPortal(modalContent, document.body);
+  }
+  
+  return modalContent;
 };
 
 export default PasswordConfirmModal;

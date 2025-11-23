@@ -142,6 +142,18 @@ const LedgerDashboard = () => {
             </div>
           </Link>
           <Link
+            to="/ledger/partnership"
+            className="bg-gradient-to-r from-pink-600 to-pink-700 rounded-lg shadow-lg p-6 text-white hover:from-pink-700 hover:to-pink-800 transition-all transform hover:scale-105"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold mb-2">🤝 Partnership</h3>
+                <p className="text-pink-100 text-sm">Party 1 & Party 2 ledger details</p>
+              </div>
+              <div className="text-4xl">→</div>
+            </div>
+          </Link>
+          <Link
             to="/generate-bill"
             className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-lg shadow-lg p-6 text-white hover:from-purple-700 hover:to-purple-800 transition-all transform hover:scale-105"
           >

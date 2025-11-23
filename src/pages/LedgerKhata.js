@@ -45,6 +45,16 @@ const LedgerKhata = () => {
   const [addingPayment, setAddingPayment] = useState(false);
   const [lastPaymentId, setLastPaymentId] = useState(null);
   
+  // Edit payment state
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [showEditPaymentModal, setShowEditPaymentModal] = useState(false);
+  const [updatingPayment, setUpdatingPayment] = useState(false);
+  
+  // Delete payment state
+  const [deletingPayment, setDeletingPayment] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
   // Get last payment entry ID from entries
   const getLastPaymentId = () => {
     if (lastPaymentId) return lastPaymentId;
@@ -87,6 +97,9 @@ const LedgerKhata = () => {
       
       const params = new URLSearchParams();
       
+      // Exclude Party 1 and Party 2 from main ledger khata
+      params.append('exclude_parties', 'Party 1,Party 2');
+      
       if (filters.customer_id) params.append('customer_id', filters.customer_id);
       if (filters.bill_number) params.append('bill_number', filters.bill_number);
       if (filters.start_date) params.append('start_date', filters.start_date);
@@ -100,23 +113,30 @@ const LedgerKhata = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      console.log('[LedgerKhata] Response received:', response.status, response.data?.count || 0, 'entries');
-      if (response.data?.entries && response.data.entries.length > 0) {
-        const sample = response.data.entries[0];
+      const entriesArray = response.data?.entries || [];
+      console.log('[LedgerKhata] Response received:', response.status, 'Status:', response.status);
+      console.log('[LedgerKhata] Total entries in response:', entriesArray.length);
+      
+      if (entriesArray.length > 0) {
+        const sample = entriesArray[0];
         console.log('[LedgerKhata] Sample entry:', sample);
         console.log('[LedgerKhata] Entry fields - description:', sample.description, 'debit:', sample.debit, 'credit:', sample.credit, 'balance:', sample.balance);
+        console.log('[LedgerKhata] First 5 entry IDs:', entriesArray.slice(0, 5).map(e => ({ id: e.id, bill: e.bill_number, type: e.entry_type })));
+        
         // Check if all entries have required fields
-        const entriesWithoutDescription = response.data.entries.filter(e => !e.description);
-        const entriesWithoutDebit = response.data.entries.filter(e => e.entry_type === 'order' && (!e.debit || parseFloat(e.debit) === 0));
+        const entriesWithoutDescription = entriesArray.filter(e => !e.description);
+        const entriesWithoutDebit = entriesArray.filter(e => e.entry_type === 'order' && (!e.debit || parseFloat(e.debit) === 0));
         if (entriesWithoutDescription.length > 0) {
           console.warn('[LedgerKhata] Entries without description:', entriesWithoutDescription.length);
         }
         if (entriesWithoutDebit.length > 0) {
           console.warn('[LedgerKhata] Bill entries without debit:', entriesWithoutDebit.length);
         }
+      } else {
+        console.warn('[LedgerKhata] No entries in response! Response data:', response.data);
       }
       console.log('[LedgerKhata] Totals:', response.data.totals);
-      setEntries(response.data.entries || []);
+      setEntries(entriesArray);
       setTotals(response.data.totals || {
         total_amount: 0,
         total_received: 0,
@@ -179,6 +199,9 @@ const LedgerKhata = () => {
       setLoadingPDF(true);
       const token = localStorage.getItem('token');
       const params = new URLSearchParams();
+      
+      // Exclude Party 1 and Party 2 from PDF
+      params.append('exclude_parties', 'Party 1,Party 2');
       
       if (filters.customer_id) params.append('customer_id', filters.customer_id);
       if (filters.bill_number) params.append('bill_number', filters.bill_number);
@@ -275,6 +298,111 @@ const LedgerKhata = () => {
     setReceivedBy('');
     setPaymentDescription('');
     setShowPaymentModal(true);
+  };
+
+  const handleEditPayment = (entry) => {
+    if (entry.entry_type !== 'payment') return;
+    
+    setEditingPayment(entry);
+    setPaymentAmount(entry.credit?.toString() || '');
+    setPaymentMethod(entry.payment_method || 'Cash');
+    
+    // Extract date from timestamp
+    const entryDate = entry.date ? new Date(entry.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    setPaymentDate(entryDate);
+    
+    setTransactionId(entry.transaction_id || '');
+    setReceivedBy(entry.received_by || '');
+    setPaymentDescription(entry.description || '');
+    setShowEditPaymentModal(true);
+  };
+
+  const handleUpdatePayment = async (e) => {
+    e.preventDefault();
+    
+    if (!editingPayment) return;
+    
+    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+      setMessage({ type: 'error', text: 'Please enter a valid payment amount' });
+      return;
+    }
+
+    setUpdatingPayment(true);
+    try {
+      const token = localStorage.getItem('token');
+      const amount = parseFloat(paymentAmount);
+      
+      const paymentData = {
+        amount: amount,
+        payment_method: paymentMethod,
+        payment_date: paymentDate || new Date().toISOString().split('T')[0],
+        transaction_id: transactionId || null,
+        received_by: receivedBy || null,
+        description: paymentDescription || 'Payment received'
+      };
+
+      const response = await axios.put(`${API_URL}/ledger/payment/${editingPayment.id}`, paymentData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      setMessage({ 
+        type: 'success', 
+        text: 'Payment updated successfully!' 
+      });
+      setShowEditPaymentModal(false);
+      setEditingPayment(null);
+      setPaymentAmount('');
+      setPaymentDate('');
+      setTransactionId('');
+      setReceivedBy('');
+      setPaymentDescription('');
+      
+      // Refresh entries
+      fetchEntries();
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to update payment';
+      setMessage({ type: 'error', text: `Update failed: ${errorMessage}` });
+    } finally {
+      setUpdatingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = (entry) => {
+    if (entry.entry_type !== 'payment') return;
+    setDeletingPayment(entry);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeletePayment = async () => {
+    if (!deletingPayment) return;
+    
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/ledger/payment/${deletingPayment.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setMessage({ 
+        type: 'success', 
+        text: 'Payment deleted successfully!' 
+      });
+      setShowDeleteConfirm(false);
+      setDeletingPayment(null);
+      
+      // Refresh entries
+      fetchEntries();
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to delete payment';
+      setMessage({ type: 'error', text: `Delete failed: ${errorMessage}` });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSubmitPayment = async (e) => {
@@ -459,7 +587,7 @@ const LedgerKhata = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Ledger Khata System <span className="text-sm text-gray-600">لیجر کھاتہ</span></h1>
-            <p className="text-sm text-gray-600 mt-1">Chronological Ledger - Date & Time | Debit | Credit | Remaining Balance | Payment Method</p>
+            <p className="text-sm text-gray-600 mt-1">Chronological Ledger (Excluding Party 1 & Party 2) - Date & Time | Debit | Credit | Remaining Balance | Payment Method</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Link
@@ -473,6 +601,12 @@ const LedgerKhata = () => {
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
             >
               Customers
+            </Link>
+            <Link
+              to="/ledger/partnership"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              Partnership
             </Link>
             <Link
               to="/generate-bill"
@@ -760,13 +894,32 @@ const LedgerKhata = () => {
                           {entry.payment_method || '-'}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-center">
-                          <button
-                            onClick={() => handleAddPayment(entry)}
-                            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
-                            title="Add payment - will appear as credit entry in ledger"
-                          >
-                            Add Payment
-                          </button>
+                          {entry.entry_type === 'payment' ? (
+                            <div className="flex gap-2 justify-center">
+                              <button
+                                onClick={() => handleEditPayment(entry)}
+                                className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                                title="Edit payment"
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeletePayment(entry)}
+                                className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors"
+                                title="Delete payment"
+                              >
+                                🗑️ Delete
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleAddPayment(entry)}
+                              className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+                              title="Add payment - will appear as credit entry in ledger"
+                            >
+                              Add Payment
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -973,6 +1126,186 @@ const LedgerKhata = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Payment Modal */}
+        {showEditPaymentModal && editingPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-bold text-gray-800">Edit Payment</h3>
+                {editingPayment.customer && (
+                  <p className="text-sm text-gray-600">Customer: {editingPayment.customer.name}</p>
+                )}
+              </div>
+              <form onSubmit={handleUpdatePayment} className="px-6 py-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Amount <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="Enter payment amount"
+                      required
+                      min="0"
+                      step="0.01"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      value={paymentDescription}
+                      onChange={(e) => setPaymentDescription(e.target.value)}
+                      placeholder="Payment description"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Method <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="JazzCash">JazzCash</option>
+                      <option value="EasyPaisa">EasyPaisa</option>
+                    </select>
+                  </div>
+                  {paymentMethod === 'Bank Transfer' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Transaction ID
+                      </label>
+                      <input
+                        type="text"
+                        value={transactionId}
+                        onChange={(e) => setTransactionId(e.target.value)}
+                        placeholder="Enter transaction ID"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Received By
+                    </label>
+                    <input
+                      type="text"
+                      value={receivedBy}
+                      onChange={(e) => setReceivedBy(e.target.value)}
+                      placeholder="Name of person who received"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditPaymentModal(false);
+                      setEditingPayment(null);
+                      setPaymentAmount('');
+                      setPaymentDate('');
+                      setTransactionId('');
+                      setReceivedBy('');
+                      setPaymentDescription('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                    disabled={updatingPayment}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingPayment}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {updatingPayment ? 'Updating...' : 'Update Payment'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && deletingPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-bold text-red-600">Delete Payment</h3>
+              </div>
+              <div className="px-6 py-4">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to delete this payment?
+                </p>
+                <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                  <p className="text-sm text-gray-600">
+                    <strong>Amount:</strong> {formatCurrency(deletingPayment.credit || 0)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <strong>Date:</strong> {formatDate(deletingPayment.date)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <strong>Method:</strong> {deletingPayment.payment_method || 'Cash'}
+                  </p>
+                  {deletingPayment.description && (
+                    <p className="text-sm text-gray-600">
+                      <strong>Description:</strong> {deletingPayment.description}
+                    </p>
+                  )}
+                </div>
+                <p className="text-sm text-red-600 font-semibold mb-4">
+                  ⚠️ This action cannot be undone!
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeletingPayment(null);
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeletePayment}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting...' : 'Delete Payment'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

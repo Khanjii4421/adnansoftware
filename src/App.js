@@ -18,6 +18,7 @@ import LedgerDashboard from './pages/LedgerDashboard';
 import LedgerCustomers from './pages/LedgerCustomers';
 import LedgerEntries from './pages/LedgerEntries';
 import LedgerKhata from './pages/LedgerKhata';
+import Partnership from './pages/Partnership';
 import GenerateBill from './pages/GenerateBill';
 import OutOfStock from './pages/OutOfStock';
 import InvoiceMatch from './pages/InvoiceMatch';
@@ -156,6 +157,14 @@ function App() {
             element={
               <PrivateRoute>
                 <LedgerKhata />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/ledger/partnership"
+            element={
+              <PrivateRoute>
+                <Partnership />
               </PrivateRoute>
             }
           />
