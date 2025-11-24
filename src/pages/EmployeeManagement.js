@@ -39,6 +39,15 @@ const EmployeeManagement = () => {
     };
   }, [stream]);
 
+  // Cleanup camera when modal closes
+  useEffect(() => {
+    if (!showModal) {
+      if (stream) {
+        stopCamera();
+      }
+    }
+  }, [showModal]);
+
   const fetchEmployees = async () => {
     try {
       setLoading(true);
@@ -65,6 +74,22 @@ const EmployeeManagement = () => {
 
   const startCamera = async () => {
     try {
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Camera is not supported in this browser. Please use Chrome, Firefox, or Edge.');
+        return;
+      }
+
+      // Check if we're on HTTPS or localhost (required for camera access)
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure) {
+        alert('Camera access requires HTTPS. Please use HTTPS or localhost.');
+        return;
+      }
+
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: 'user',
@@ -76,10 +101,30 @@ const EmployeeManagement = () => {
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        // Wait for video to load
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play().catch(err => {
+              console.error('Error playing video:', err);
+            });
+          }
+        };
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert('Unable to access camera. Please allow camera permissions.');
+      let errorMessage = 'Unable to access camera. ';
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage += 'Please allow camera permissions in your browser settings.';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage += 'No camera found. Please connect a camera.';
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage += 'Camera is already in use by another application.';
+      } else {
+        errorMessage += error.message || 'Unknown error occurred.';
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -94,16 +139,33 @@ const EmployeeManagement = () => {
   };
 
   const captureImage = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      alert('Camera not ready. Please wait for camera to load.');
+      return;
+    }
 
     const video = videoRef.current;
+    
+    // Check if video is ready
+    if (!video.videoWidth || !video.videoHeight) {
+      alert('Camera is still loading. Please wait a moment and try again.');
+      return;
+    }
+
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
 
+    // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+    // Draw video frame to canvas (mirror it back since we flipped the video)
+    context.save();
+    context.scale(-1, 1);
+    context.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+    context.restore();
+
+    // Convert to base64
     const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
     setCapturedImage(imageBase64);
     setFormData({ ...formData, profile_image_base64: imageBase64 });
@@ -399,18 +461,27 @@ const EmployeeManagement = () => {
                   )}
                   {stream && (
                     <div className="space-y-2">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        className="w-full max-w-md rounded-lg border-2 border-indigo-500"
-                        style={{ transform: 'scaleX(-1)' }}
-                      />
-                      <div className="flex gap-2">
+                      <div className="relative">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full max-w-md mx-auto rounded-lg border-2 border-indigo-500 bg-gray-900"
+                          style={{ transform: 'scaleX(-1)' }}
+                        />
+                        {!videoRef.current?.videoWidth && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-lg">
+                            <p className="text-white">Loading camera...</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 justify-center">
                         <button
                           type="button"
                           onClick={captureImage}
-                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                          disabled={!videoRef.current?.videoWidth}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           📸 Capture
                         </button>
