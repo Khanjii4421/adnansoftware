@@ -27,6 +27,9 @@ import Suppliers from './pages/Suppliers';
 import PurchaseEntry from './pages/PurchaseEntry';
 import PurchaseDashboard from './pages/PurchaseDashboard';
 import ExpensesTracker from './pages/ExpensesTracker';
+import EmployeeAttendance from './pages/EmployeeAttendance';
+import EmployeeManagement from './pages/EmployeeManagement';
+import AttendanceView from './pages/AttendanceView';
 import './App.css';
 
 function App() {
@@ -221,6 +224,30 @@ function App() {
             element={
               <PrivateRoute>
                 <ExpensesTracker />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/employee-attendance"
+            element={
+              <PrivateRoute>
+                <EmployeeAttendance />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/employee-management"
+            element={
+              <PrivateRoute>
+                <EmployeeManagement />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/attendance-view"
+            element={
+              <PrivateRoute>
+                <AttendanceView />
               </PrivateRoute>
             }
           />

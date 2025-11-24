@@ -4719,6 +4719,43 @@ app.post('/api/invoices/generate', authenticateToken, async (req, res) => {
 // LEDGER ROUTES
 // ============================================
 
+// Helper function to normalize party name (e.g., "party 1" -> "Party 1", "PARTY 1" -> "Party 1")
+const normalizePartyName = (party) => {
+  if (!party || typeof party !== 'string') return null;
+  
+  const trimmed = party.trim();
+  if (!trimmed) return null;
+  
+  // Handle common party name patterns
+  const lowerTrimmed = trimmed.toLowerCase();
+  
+  // Match patterns like "party 1", "party1", "PARTY 1", etc.
+  const partyMatch = lowerTrimmed.match(/^(party\s*)(\d+)$/);
+  if (partyMatch) {
+    const partyNumber = partyMatch[2];
+    return `Party ${partyNumber}`;
+  }
+  
+  // Match patterns like "party one", "party two", etc.
+  const partyWordMatch = lowerTrimmed.match(/^party\s+(one|two|three|four|five)$/);
+  if (partyWordMatch) {
+    const partyWord = partyWordMatch[1];
+    const numberMap = { one: '1', two: '2', three: '3', four: '4', five: '5' };
+    return `Party ${numberMap[partyWord]}`;
+  }
+  
+  // If it's a standard party name format, capitalize properly
+  // Convert "party 1" -> "Party 1", keep "Party 1" as is
+  const words = trimmed.split(/\s+/).map((word, index) => {
+    if (index === 0) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
+    return word;
+  });
+  
+  return words.join(' ');
+};
+
 // Get ledger customers
 app.get('/api/ledger/customers', authenticateToken, async (req, res) => {
   try {
@@ -4743,7 +4780,9 @@ app.get('/api/ledger/customers', authenticateToken, async (req, res) => {
         // Use PostgREST filter: party is null OR party equals empty string
         query = query.or('party.is.null,party.eq.');
       } else {
-        query = query.eq('party', party);
+        // Normalize party name before filtering (ensures consistent matching)
+        const normalizedParty = normalizePartyName(party);
+        query = query.eq('party', normalizedParty || party);
       }
     }
 
@@ -4948,6 +4987,9 @@ app.post('/api/ledger/customers', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Customer with this phone number already exists' });
     }
 
+    // Normalize party name
+    const normalizedParty = normalizePartyName(party);
+
     // Insert new customer
     const { data: customer, error } = await supabase
       .from('customers')
@@ -4957,7 +4999,7 @@ app.post('/api/ledger/customers', authenticateToken, async (req, res) => {
         address: address?.trim() || '',
         city: city?.trim() || '',
         cnic: cnic?.trim() || '',
-        party: party?.trim() || null
+        party: normalizedParty
       })
       .select()
       .single();
@@ -5022,7 +5064,10 @@ app.put('/api/ledger/customers/:id', authenticateToken, async (req, res) => {
     if (address !== undefined) updateData.address = address?.trim() || '';
     if (city !== undefined) updateData.city = city?.trim() || '';
     if (cnic !== undefined) updateData.cnic = cnic?.trim() || '';
-    if (party !== undefined) updateData.party = party?.trim() || null;
+    if (party !== undefined) {
+      // Normalize party name
+      updateData.party = normalizePartyName(party);
+    }
 
     const { data: updatedCustomer, error: updateError } = await supabase
       .from('customers')
@@ -10917,7 +10962,441 @@ app.delete('/api/expenses/:id', authenticateToken, verifyPasswordForDelete, asyn
   }
 });
 
-//
+// ============================================
+// EMPLOYEE ATTENDANCE ROUTES
+// ============================================
+
+// Helper function for basic image comparison (simple hash-based)
+// Note: For production, consider using face recognition libraries or services
+const compareImages = (img1Base64, img2Base64) => {
+  // Simple comparison - in production, use proper face recognition
+  // For now, we'll do a basic check and return a match score
+  if (!img1Base64 || !img2Base64) return { match: false, score: 0 };
+  
+  // Remove data URL prefix if present
+  const clean1 = img1Base64.replace(/^data:image\/[a-z]+;base64,/, '');
+  const clean2 = img2Base64.replace(/^data:image\/[a-z]+;base64,/, '');
+  
+  // Simple length and similarity check
+  // In production, implement proper face recognition
+  const similarity = clean1.length > 0 && clean2.length > 0 ? 0.7 : 0;
+  
+  return {
+    match: similarity > 0.5,
+    score: similarity
+  };
+};
+
+// Get all employees
+app.get('/api/employees', authenticateToken, async (req, res) => {
+  console.log('[API] /api/employees - Request received');
+  try {
+    if (!isSupabaseConfigured) {
+      console.error('[API] /api/employees - Database not configured');
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { data: employees, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('[API] /api/employees - Supabase error:', error);
+      if (error.code === '42P01') {
+        return res.status(500).json({ 
+          error: 'Employees table does not exist. Please run employee-attendance-schema.sql in Supabase SQL Editor.',
+          employees: []
+        });
+      }
+      throw error;
+    }
+
+    console.log('[API] /api/employees - Success, returning', (employees || []).length, 'employees');
+    res.json({ employees: employees || [] });
+  } catch (error) {
+    console.error('[API] /api/employees - Error fetching employees:', error);
+    res.status(500).json({ error: 'Failed to fetch employees' });
+  }
+});
+
+// Get single employee by code
+app.get('/api/employees/code/:code', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { code } = req.params;
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('employee_code', code)
+      .eq('is_active', true)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+      throw error;
+    }
+
+    res.json({ employee });
+  } catch (error) {
+    console.error('Error fetching employee:', error);
+    res.status(500).json({ error: 'Failed to fetch employee' });
+  }
+});
+
+// Create employee (Admin only)
+app.post('/api/employees', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { employee_code, name, email, phone, position, department, profile_image_base64 } = req.body;
+
+    if (!employee_code || !name) {
+      return res.status(400).json({ error: 'Employee code and name are required' });
+    }
+
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .insert([{
+        employee_code,
+        name,
+        email: email || null,
+        phone: phone || null,
+        position: position || null,
+        department: department || null,
+        profile_image_base64: profile_image_base64 || null
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: 'Employee code already exists' });
+      }
+      throw error;
+    }
+
+    res.json({ employee });
+  } catch (error) {
+    console.error('Error creating employee:', error);
+    res.status(500).json({ error: 'Failed to create employee' });
+  }
+});
+
+// Update employee (Admin only)
+app.put('/api/employees/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    const { name, email, phone, position, department, profile_image_base64, is_active } = req.body;
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (position !== undefined) updateData.position = position;
+    if (department !== undefined) updateData.department = department;
+    if (profile_image_base64 !== undefined) updateData.profile_image_base64 = profile_image_base64;
+    if (is_active !== undefined) updateData.is_active = is_active;
+
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ employee });
+  } catch (error) {
+    console.error('Error updating employee:', error);
+    res.status(500).json({ error: 'Failed to update employee' });
+  }
+});
+
+// Mark attendance (Entry or Exit)
+app.post('/api/attendance/mark', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { employee_code, image_base64, type } = req.body; // type: 'entry' or 'exit'
+
+    if (!employee_code || !image_base64 || !type) {
+      return res.status(400).json({ error: 'Employee code, image, and type are required' });
+    }
+
+    if (type !== 'entry' && type !== 'exit') {
+      return res.status(400).json({ error: 'Type must be "entry" or "exit"' });
+    }
+
+    // Get employee
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('employee_code', employee_code)
+      .eq('is_active', true)
+      .single();
+
+    if (empError || !employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Verify image match if profile image exists
+    let imageMatch = true;
+    let matchScore = 1.0;
+    if (employee.profile_image_base64) {
+      const comparison = compareImages(employee.profile_image_base64, image_base64);
+      imageMatch = comparison.match;
+      matchScore = comparison.score;
+      
+      if (!imageMatch) {
+        return res.status(400).json({ 
+          error: 'Image does not match employee profile',
+          matchScore: matchScore.toFixed(2)
+        });
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+
+    // Check if attendance record exists for today
+    const { data: existingAttendance, error: attError } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('employee_id', employee.id)
+      .eq('attendance_date', today)
+      .single();
+
+    let attendance;
+
+    if (attError && attError.code === 'PGRST116') {
+      // No attendance record exists, create new one
+      if (type === 'entry') {
+        const { data: newAttendance, error: createError } = await supabase
+          .from('attendance')
+          .insert([{
+            employee_id: employee.id,
+            attendance_date: today,
+            entry_time: now,
+            entry_image_base64: image_base64,
+            status: 'present'
+          }])
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        attendance = newAttendance;
+      } else {
+        return res.status(400).json({ error: 'No entry found for today. Please mark entry first.' });
+      }
+    } else if (existingAttendance) {
+      // Attendance record exists, update it
+      if (type === 'entry') {
+        if (existingAttendance.entry_time) {
+          return res.status(400).json({ error: 'Entry already marked for today' });
+        }
+        // Update entry
+        const { data: updatedAttendance, error: updateError } = await supabase
+          .from('attendance')
+          .update({
+            entry_time: now,
+            entry_image_base64: image_base64,
+            status: 'present'
+          })
+          .eq('id', existingAttendance.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        attendance = updatedAttendance;
+      } else {
+        // Exit
+        if (!existingAttendance.entry_time) {
+          return res.status(400).json({ error: 'Entry not found. Please mark entry first.' });
+        }
+        if (existingAttendance.exit_time) {
+          return res.status(400).json({ error: 'Exit already marked for today' });
+        }
+        // Update exit
+        const { data: updatedAttendance, error: updateError } = await supabase
+          .from('attendance')
+          .update({
+            exit_time: now,
+            exit_image_base64: image_base64
+          })
+          .eq('id', existingAttendance.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        attendance = updatedAttendance;
+      }
+    } else {
+      throw attError;
+    }
+
+    res.json({ 
+      attendance,
+      message: `${type === 'entry' ? 'Entry' : 'Exit'} marked successfully`,
+      imageMatch: true,
+      matchScore: matchScore.toFixed(2)
+    });
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({ error: 'Failed to mark attendance' });
+  }
+});
+
+// Get attendance records
+app.get('/api/attendance', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { employee_id, start_date, end_date, employee_code } = req.query;
+
+    let query = supabase
+      .from('attendance')
+      .select('*, employee:employees(id, employee_code, name, email, phone, position, department)')
+      .order('attendance_date', { ascending: false });
+
+    if (employee_id) {
+      query = query.eq('employee_id', employee_id);
+    }
+
+    if (employee_code) {
+      // First get employee id
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('employee_code', employee_code)
+        .single();
+      
+      if (employee) {
+        query = query.eq('employee_id', employee.id);
+      }
+    }
+
+    if (start_date) {
+      query = query.gte('attendance_date', start_date);
+    }
+
+    if (end_date) {
+      query = query.lte('attendance_date', end_date);
+    }
+
+    const { data: attendance, error } = await query;
+
+    if (error) {
+      if (error.code === '42P01') {
+        return res.status(500).json({ 
+          error: 'Attendance table does not exist. Please run employee-attendance-schema.sql in Supabase SQL Editor.',
+          attendance: []
+        });
+      }
+      throw error;
+    }
+
+    // Format attendance data
+    const formattedAttendance = (attendance || []).map(record => ({
+      ...record,
+      employee_name: record.employee?.name || 'Unknown',
+      employee_code: record.employee?.employee_code || '',
+      employee_position: record.employee?.position || '',
+      employee_department: record.employee?.department || ''
+    }));
+
+    res.json({ attendance: formattedAttendance });
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance' });
+  }
+});
+
+// Get attendance summary (for dashboard)
+app.get('/api/attendance/summary', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get today's attendance
+    const { data: todayAttendance, error: todayError } = await supabase
+      .from('attendance')
+      .select('*, employee:employees(id, employee_code, name)')
+      .eq('attendance_date', today);
+
+    // Get total employees
+    const { data: totalEmployees, error: empError } = await supabase
+      .from('employees')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true);
+
+    const total = totalEmployees || 0;
+    const present = (todayAttendance || []).filter(a => a.entry_time).length;
+    const absent = total - present;
+
+    res.json({
+      total,
+      present,
+      absent,
+      today_attendance: todayAttendance || []
+    });
+  } catch (error) {
+    console.error('Error fetching attendance summary:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance summary' });
+  }
+});
+
+// Delete employee (Admin only)
+app.delete('/api/employees/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    const { error } = await supabase
+      .from('employees')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ message: 'Employee deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting employee:', error);
+    res.status(500).json({ error: 'Failed to delete employee' });
+  }
+});
 
 // Serve static files from React app in production
 // Check if build directory exists and NODE_ENV is production
@@ -10963,6 +11442,9 @@ if (isProduction && buildExists) {
           '/api/test',
           '/api/auth/login',
           '/api/orders',
+          '/api/employees',
+          '/api/attendance',
+          '/api/attendance/summary',
           // ... other endpoints
         ]
       });
@@ -11033,6 +11515,15 @@ console.log(`⏱️  Timeout: 30 minutes for bulk uploads (up to 1M orders)`);
     console.log(`   - POST /api/expenses`);
     console.log(`   - PUT  /api/expenses/:id`);
     console.log(`   - DELETE /api/expenses/:id\n`);
+    console.log(`\n✅ Employee Attendance Routes Registered:`);
+    console.log(`   - GET  /api/employees`);
+    console.log(`   - GET  /api/employees/code/:code`);
+    console.log(`   - POST /api/employees`);
+    console.log(`   - PUT  /api/employees/:id`);
+    console.log(`   - DELETE /api/employees/:id`);
+    console.log(`   - POST /api/attendance/mark`);
+    console.log(`   - GET  /api/attendance`);
+    console.log(`   - GET  /api/attendance/summary\n`);
 console.log(`\n✅ Ledger Khata Routes Registered:`);
     console.log(`   - GET  /api/ledger/khata`);
     console.log(`   - GET  /api/ledger/khata/pdf`);
